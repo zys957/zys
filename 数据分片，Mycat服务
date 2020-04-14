@@ -1,0 +1,393 @@
+++++++++++++++RDBMS2_DAY03-----数据分片服务
+
+		1 相关概念？
+		2 软件介绍
+		3 mycat分片服务工作过程
+		4 拓扑结构
+
+			休息到15:00
+		5 配置数据分片服务器192.168.4.56
+			1 安装软件   3分钟时间到 15:09 
+     11  yum  -y   install  java-1.8.0-openjdk.x86_64
+     12  java  -version
+     17  tar  -zxvf /var/ftp/upload/Mycat-server-1.6-RELEASE-20161028204710-linux.tar.gz 
+   20  ls mycat/
+   21  mv mycat  /usr/local/
+   22  ls /usr/local/
+   23  ls /usr/local/mycat/
+			2 配置文件说明
+
+			3 修改配置文件 （标签要成对出现 要有开始有结束）
+			  3.1  指定连接用户 server.xml  (扩展标记语言) 使用默认配置即可
+
+			  3.2  设置数据分片的表 
+
+[root@host56 conf]# cp  schema.xml  /root/
+[root@host56 conf]# sed -i '56,77d' schema.xml
+[root@host56 conf]# sed -i '39,42d' schema.xml
+
+ ]# vim schema.xml
+ <mycat:schema xmlns:mycat="http://io.mycat/">
+ 	<schema .....>   #定义数据分布式存储的表
+	        <table     />
+
+	        <table  ....> ....</table>
+	</schema>
+
+        <dataNode ..... /> #指定数据库服务器的主机名
+
+	<dataHost ..... >  #指定数据库服务器的ip地址
+	</dataHost>
+ </mycat:schema>
+
+ [root@host56 mycat]# cat conf/schema.xml
+<?xml version="1.0"?>
+<!DOCTYPE mycat:schema SYSTEM "schema.dtd">
+<mycat:schema xmlns:mycat="http://io.mycat/">
+
+	<schema name="TESTDB" checkSQLschema="false" sqlMaxLimit="100">
+		<!-- auto sharding by id (long) -->
+		<table name="travelrecord" dataNode="dn1,dn2,dn3" rule="auto-sharding-long" />
+
+		<!-- global table is auto cloned to all defined data nodes ,so can join
+			with any table whose sharding node is in the same data node -->
+		<table name="company" primaryKey="ID" type="global" dataNode="dn1,dn2,dn3" />
+		<table name="goods" primaryKey="ID" type="global" dataNode="dn1,dn2,dn3" />
+		<!-- random sharding using mod sharind rule -->
+		<table name="hotnews" primaryKey="ID" autoIncrement="true" dataNode="dn1,dn2,dn3"
+			   rule="mod-long" />
+		<!-- <table name="dual" primaryKey="ID" dataNode="dnx,dnoracle2" type="global"
+			needAddLimit="false"/> <table name="worker" primaryKey="ID" dataNode="jdbc_dn1,jdbc_dn2,jdbc_dn3"
+			rule="mod-long" /> -->
+		<table name="employee" primaryKey="ID" dataNode="dn1,dn2,dn3"
+			   rule="sharding-by-intfile" />
+		<table name="customer" primaryKey="ID" dataNode="dn1,dn2,dn3"
+			   rule="sharding-by-intfile">
+			<childTable name="orders" primaryKey="ID" joinKey="customer_id"
+						parentKey="id">
+				<childTable name="order_items" joinKey="order_id"
+							parentKey="id" />
+			</childTable>
+			<childTable name="customer_addr" primaryKey="ID" joinKey="customer_id"
+						parentKey="id" />
+		</table>
+		<!-- <table name="oc_call" primaryKey="ID" dataNode="dn1$0-743" rule="latest-month-calldate"
+			/> -->
+	</schema>
+	<!-- <dataNode name="dn1$0-743" dataHost="localhost1" database="db$0-743"
+		/> -->
+	<dataNode name="dn1" dataHost="mysql53" database="db1" />
+	<dataNode name="dn2" dataHost="mysql54" database="db2" />
+	<dataNode name="dn3" dataHost="mysql55" database="db3" />
+	
+        <dataHost name="mysql53" maxCon="1000" minCon="10" balance="0"
+			  writeType="0" dbType="mysql" dbDriver="native" switchType="1"  slaveThreshold="100">
+		<heartbeat>select user()</heartbeat>
+		<writeHost host="hostM1" url="192.168.4.53:3306" user="pljadmin"
+				   password="123qqq...A">
+		</writeHost>
+	</dataHost>
+
+        <dataHost name="mysql54" maxCon="1000" minCon="10" balance="0"
+                          writeType="0" dbType="mysql" dbDriver="native" switchType="1"  slaveThreshold="100">
+                <heartbeat>select user()</heartbeat>
+                <writeHost host="hostM2" url="192.168.4.54:3306" user="pljadmin"
+                                   password="123qqq...A">
+                </writeHost>
+        </dataHost>
+
+	<dataHost name="mysql55" maxCon="1000" minCon="10" balance="0"
+                          writeType="0" dbType="mysql" dbDriver="native" switchType="1"  slaveThreshold="100">
+                <heartbeat>select user()</heartbeat>
+                <writeHost host="hostM3" url="192.168.4.55:3306" user="pljadmin"
+                                   password="123qqq...A">
+                </writeHost>
+        </dataHost>
+</mycat:schema>
+[root@host56 mycat]# 
+
+
+
+			4 配置数据库服务器 (3台数据库服务器根据schema.xml配置 ，做如下操作)
+			[root@host53 mysql]# mysql -uroot -p123qqq...A -e 'create database db1'
+			[root@host54 mysql]# mysql -uroot -p123qqq...A -e 'create database db2'
+			[root@host55 mysql]# mysql -uroot -p123qqq...A -e 'create database db3'	
+
+			[root@host53 mysql]# mysql -uroot -p123qqq...A -e 'grant all on  *.* to pljadmin@"%" identified by  "123qqq...A"'
+
+			[root@host54 mysql]# mysql -uroot -p123qqq...A -e 'grant all on  *.* to pljadmin@"%" identified by  "123qqq...A"'
+
+			[root@host55 mysql]# mysql -uroot -p123qqq...A -e 'grant all on  *.* to pljadmin@"%" identified by  "123qqq...A"'
+
+			5 启动mycat服务
+
+ [root@host56 conf]# mysql -h192.168.4.55 -upljadmin -p123qqq...A
+ [root@host56 conf]# mysql -h192.168.4.54 -upljadmin -p123qqq...A
+ [root@host56 conf]# mysql -h192.168.4.53 -upljadmin -p123qqq...A
+
+ [root@host56 mycat]# /usr/local/mycat/bin/mycat  start
+Starting Mycat-server...
+[root@host56 mycat]# 
+
+			6 查看服务状态
+[root@host56 mycat]# netstat  -utnlp  | grep 8066
+tcp6       0      0 :::8066                 :::*                    LISTEN      1637/java         
+[root@host56 mycat]#
+ [root@host56 mycat]# ls logs/
+ mycat.log  mycat.pid  wrapper.log
+[root@host56 mycat]#
+			
+		6 测试配置：在客户端50 连接mycat服务器56 能够查看的定义逻辑库和逻辑表
+			[root@host50 ~]# mysql -h192.168.4.56 -P8066  -uroot -p123456
+	
+mysql> show databases;
++----------+
+| DATABASE |
++----------+
+| TESTDB   |
++----------+
+1 row in set (0.00 sec)
+
+mysql> use TESTDB;
+
+mysql> show tables;
++------------------+
+| Tables in TESTDB |
++------------------+
+| company          |
+| customer         |
+| customer_addr    |
+| employee         |
+| goods            |
+| hotnews          |
+| orders           |
+| order_items      |
+| travelrecord     |
++------------------+
+9 rows in set (0.00 sec)
+
+mysql> desc employee;
+ERROR 1146 (42S02): Table 'db2.employee' doesn't exist
+mysql> 
+mysql> exit;
+
+					
+		6 测试配置：在客户端50 连接mycat服务器56 能够查看的定义逻辑库和逻辑表
+			[root@host50 ~]# mysql -h192.168.4.56 -P8066  -uroot -p123456
+	
+mysql> show databases;
++----------+
+| DATABASE |
++----------+
+| TESTDB   |
++----------+
+1 row in set (0.00 sec)
+
+mysql> use TESTDB;
+
+mysql> show tables;
++------------------+
+| Tables in TESTDB |
++------------------+
+| company          |
+| customer         |
+| customer_addr    |
+| employee         |
+| goods            |
+| hotnews          |
+| orders           |
+| order_items      |
+| travelrecord     |
++------------------+
+9 rows in set (0.00 sec)
+
+mysql> desc employee;
+ERROR 1146 (42S02): Table 'db2.employee' doesn't exist
+mysql> 
+mysql> exit;
+
+		7 统一排错
+		8 分片规则 使用例子 （使用 分片规则 实现数据的分布式存储）
+			8.1 枚举分片规则 sharding-by-intfile
+			        给分片字段赋值时，值必须在 分片规则配置文件 定义的值 里选择
+   
+				查看那张表使用sharding-by-intfile
+
+				vim  schema.xml
+				  <table name="employee" primaryKey="ID" dataNode="dn1,dn2,dn3"
+                           rule="sharding-by-intfile" />
+
+				 查看分片字段名
+				vim rule.xml
+					  <tableRule name="sharding-by-intfile">
+                				<rule>
+                        			   <columns>sharding_id</columns>
+                        			   <algorithm>hash-int</algorithm>
+                				</rule>
+        				   </tableRule>
+					
+				修改分片规则配置文件，定义值列表
+				vim rule.xml
+				  <function name="hash-int"
+                									class="io.mycat.route.function.PartitionByFileMap">
+                			<property name="mapFile">partition-hash-int.txt</property>
+        			  </function>				   
+
+
+				]# vim /usr/local/mycat/conf/partition-hash-int.txt				  				
+					10000=0     
+					10010=1
+					10020=2      
+				:wq
+
+				重启mycat服务
+				]# /usr/local/mycat/bin/mycat stop
+				]# /usr/local/mycat/bin/mycat start
+			
+				客户端连接mycat 服务 创建employee 并存储数据
+mysql> use TESTDB;
+Database changed
+mysql>
+mysql> create table employee( ID int primary key auto_increment ,
+    -> sharding_id int , name char(15) , age int );
+
+mysql> desc employee ;
++-------------+----------+------+-----+---------+----------------+
+| Field       | Type     | Null | Key | Default | Extra          |
++-------------+----------+------+-----+---------+----------------+
+| ID          | int(11)  | NO   | PRI | NULL    | auto_increment |
+| sharding_id | int(11)  | YES  |     | NULL    |                |
+| name        | char(15) | YES  |     | NULL    |                |
+| age         | int(11)  | YES  |     | NULL    |                |
++-------------+----------+------+-----+---------+----------------+
+4 rows in set (0.20 sec)
+
+mysql> insert into  employee(sharding_id , name , age )values(10000,"bob",19),(10000,"bob",19),(10000,"bob",19);
+
+mysql> insert into  employee(sharding_id , name , age )values(10010,"bobA",19),(10010,"bobA",19),(10010,"bobA",19);
+
+mysql> insert into  employee(sharding_id , name , age )values(10020,"bobF",19),(10020,"bobF",19),(10020,"bobF",19);
+
+mysql> select  * from employee;   
+				
+			在3台数据库服务器上查看employee表记录
+
+[root@host53 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db1.employee'
+[root@host54 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db2.employee'				
+[root@host55 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db3.employee'
+
+
+			
+			8.2 求模分片规则 mod-long
+				根据字段值与设定的数字求模结果存储数据
+
+				查看使用求模分别规则的表
+				vim schema.xml
+				<table name="hotnews"  dataNode="dn1,dn2,dn3" rule="mod-long" />	
+				:wq
+                                查看分片字段名
+				  vim rule.xml
+					 <tableRule name="mod-long">
+                				<rule>
+                        			    <columns>id</columns>
+                        			    <algorithm>mod-long</algorithm>
+                		 		</rule>
+       					 </tableRule>
+
+				 设置分片字段 求模的 数字
+					
+					vim rule.xml
+						
+		<function name="mod-long" class="io.mycat.route.function.PartitionByMod">
+                	<!-- how many data nodes -->
+                	<property name="count">3</property>
+        	</function>
+	
+				重启mycat服务
+					]# /usr/local/mycat/bin/mycat  stop
+				 	]# /usr/local/mycat/bin/mycat  start
+
+
+				客户端连接mycat服务器建表 并存储数据
+
+mysql> use TESTDB;
+mysql> create table hotnews( id int , title char(50) , comment char(200) ) ;
+
+mysql> insert into hotnews(id , title , comment) values (9,"xxx","xxxx"),(9,"xxx","xxx"),(9,"xxx","xxxx");
+
+mysql> insert into hotnews(id , title , comment) values (10,"xxxA","xxxxA"),(10,"xxxA","xxxA"),(10,"xxxA","xxxxA");
+
+mysql> insert into hotnews(id , title , comment) values (11, "xxxB","xxxxA"),(11,"xxxB","xxxA"),(11,"xxxB","xxxxA");
+				
+				在3台数据库服务器查看数据
+[root@host53 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db1.hotnews'				
+[root@host54 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db2.hotnews'
+[root@host55 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db3.hotnews'
+
+
+
+		9 添加新库 、 新表
+			9.1 添加新库
+				vim server.xml
+					<user name="root">
+						.....
+						<property name="schemas">TESTDB,GAMEDB</property>
+
+					<user name="root">
+						.....
+						<property name="schemas">TESTDB,GAMEDB</property>
+				     
+				:wq
+    
+
+			9.2 添加新表
+				vim schema.xml
+
+	<mycat:schema xmlns:mycat="http://io.mycat/">
+
+             <schema name="GAMEDB" checkSQLschema="false" sqlMaxLimit="100">
+                  <table name="company2" primaryKey="ID" type="global" dataNode="dn1,dn2,dn3" />
+                  <table name="hotnews2" rule="sharding-by-intfile" dataNode="dn1,dn2,dn3" />
+             </schema>
+             .....
+        </mycat:schema>
+
+			9.3 重启mycat服务
+				]# /usr/local/mycat/bin/mycat stop
+				]# /usr/local/mycat/bin/mycat start
+				]# netstat  -utnlp  | grep 8066
+
+			9.4 客户端向新库新表存储数据
+				
+ [root@host50 ~]# mysql -h192.168.4.56 -P8066 -uroot -p123456
+
+mysql> show databases;
++----------+
+| DATABASE |
++----------+
+| GAMEDB   |
+| TESTDB   |
++----------+
+2 rows in set (0.01 sec)
+
+mysql> use GAMEDB;
+mysql> show tables;
++------------------+
+| Tables in GAMEDB |
++------------------+
+| company2         |
+| hotnews2         |
++------------------+
+2 rows in set (0.00 sec)
+
+mysql> create table company2(cname char(20),caddr char(50),cp char(10));
+
+mysql> insert into company2(cname,caddr,cp)values("tarena","bj","hsy");
+mysql> insert into company2(cname,caddr,cp)values("tarena","bj","hsy");
+mysql> insert into company2(cname,caddr,cp)values("tarena","bj","hsy");
+mysql> insert into company2(cname,caddr,cp)values("tarena","bj","hsy");
+mysql> select  * from company2;
+
+[root@host53 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db1.company2'
+[root@host54 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db2.company2'
+[root@host55 ~]# mysql -uroot -p123qqq...A -e 'select  * from  db3.company2'
