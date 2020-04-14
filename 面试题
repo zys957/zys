@@ -1,0 +1,309 @@
+1）描述raid 0、1、5的特点和优点?
+
+答：Raid0条带卷，可以高效读写，硬盘空间利用率100%，raid1是复制卷可以实现数据的高可靠读写，硬盘空间利率50%，raid5兼得以上两种优点，硬盘空间利用率N-1，仅可用损坏一块硬盘。
+
+2）将目录/opt/bjca3打包备份排除/opt/bjca3/logs目录，传递到远程主机192.168.1.8的/backup目录下？
+
+答：使用--exclude选项在打包时可用排除特定的目录，但是要注意，使用tar 的--exclude 排除打包的时候，不能加“/”，否则还是会把logs目录以及其下的文件打包进去。
+
+错误写法：
+
+tar -czvf bjca3.tar.gz --exclude=/opt/bjca3/logs/ /opt/bjca3
+
+正确写法：
+
+tar -czvf bjca3.tar.gz --exclude=/opt/bjca3/logs /opt/bjca3
+
+3) 如何远程查看Linux服务192.168.1.7运行了多少时间？
+
+答：ssh root@192.168.1.7 uptime
+
+4）虚拟机常用有几种网络模式？请简述其工作原理或你个人的理解？
+
+答：有桥接模式、隔离模式、NAT模式、路由模式，如图-48所示。
+
+
+图-48
+
+桥接模式：Guest与Host连接到同一个交换机上；通过桥接物理网卡，相当于直连到Host所在网络。
+
+隔离模式：允许Guest访问同一虚拟交换机上的其他Guest；但是不能访问Host所在的外部网络。
+
+NAT模式（默认）：将Guest虚拟机的默认网关指向Host物理机的virtbr0接口的IP地址；Guest共享真机的网络连接，以地址转换的方式访问外网。
+
+路由模式：由Host物理机充当路由器，开启转发；需要额外设置外网与Guest虚拟机之间互访的路由条目，Guest以路由转发的方式访问外网（需要在真机配置iptables规则）。
+
+5）在11月份内，每天的早上6点到12点中，每隔2小时执行一次 /usr/bin/httpd.sh，怎么实现？
+
+答：
+
+0 6-12/2 * 11 * /usr/bin/httpd.sh
+
+6）如何查看当前系统是否有监听6666端口？
+
+答：
+
+netstat -untlp | grep 6666或者ss -nutlp | grep 6666
+
+7) 如何显示CPU占用率最高的进程？
+
+答：
+
+top，输入大写的P
+
+8）用什么命令可以查看上一次服务器启动时间、上一次谁登陆过服务器?
+
+答：
+
+last（历史登陆记录），uptime（系统累计运行的时间），who -b(上次启动系统的时间)
+
+1) 什么是灰度发布：
+
+答：
+
+灰度发布（又名金丝雀发布）是指在黑与白之间，能够平滑过渡的一种发布方式。
+
+让一部分用户继续用产品特性A，一部分用户开始用产品特性B，如果用户对B没有什么反对意见，那么逐步扩大范围，把所有用户都迁移到B上面来。灰度发布可以保证整体系统的稳定，在初始灰度的时候就可以发现、调整问题，以保证其影响度。灰度期：灰度发布开始到结束期间的这一段时间，称为灰度期。
+
+2）DNS服务器有哪些种，其使用的端口为多少？
+
+答：
+
+有 根DNS、一级DNS、二级DNS、三级DNS、缓存DNS
+
+主DNS服务器、从DNS服务器
+
+端口：53
+
+3）从日志/opt/bjca3/logs/ca_access.log中截取14点到16点的日志，将截取的日志导入到/tmp/ca_access.txt中，日志格式如下：
+
+[Fri Mar 17 13:59:00 2017] [debug] mod_cmp.c(1600):[client 192.168.97.8] [CMP] CMP_set_status: starting …
+[Fri Mar 17 13:59:00 2017] [debug] mod_cmp.c(938):[client 192.168.97.8] [CMP] CMP_cu_integer_set: starting …
+[Fri Mar 17 13:59:00 2017] [debug] mod_cmp.c(957):[client 192.168.97.8] [CMP] CMP_cu_integer_set: ending ok …
+………
+[Fri Mar 17 16:36:00 2017] [debug] mod_cmp.c(1014):[client 192.168.97.8] [CMP] cu_octet_str_set: starting …
+[Fri Mar 17 16:36:00 2017] [debug] mod_cmp.c(1037):[client 192.168.97.8] [CMP] cu_octet_str_set: ending ok …
+答：
+
+awk '$4>"13:00:00"&&$4<="16:59:00"' ca_access.log
+
+4）监控检查，使用ping命令编写脚本来查询一组IP地址同时检测他们是否处于活跃状态。要求（range：192.168.1.200-192.168.1.220，一个IP发送4个ping包，ping的过程不能输出信息到终端）？
+
+答：
+
+#!/bin/bash
+for i in {200..220}
+do
+ping -c 4  -i 0.2  -W 1  192.168.1.$i &>/dev/null
+if  [  $? -ne 0 ];then
+    echo  "192.168.1.$i is down"
+fi
+done
+5）假设nginx的访问日志格式如下，统计访问页面前10位的IP数？
+
+202.101.129.218 - - [26/Mar/2017:23:59:55 +0800] "GET /online/stat_inst.php?
+pid=d065HTTP/1.1" 302 20 -"-" "-" "Mozilla/4.0(compatible;MSIE 6.0;Windows NT 5.1)"
+答：
+
+awk '{IP[$1]++} END{for(i in IP){print i,IP[i]}}' access.log \
+
+| sort -n | tail -10
+
+6) 请列举出10个以上的你所知晓的SQL语句？
+
+参考答案：
+
+insert  select   delete  update  create  show   drop   grant    revoke   load data   create view
+7）如何切换到某个数据库，并在上面工作？
+
+答：
+
+use 库名;
+
+8）列出数据库内的所有表？
+
+答：
+
+show tables;
+
+9）如何删除表、删除数据库？
+
+答：
+
+drop table 表名;drop database 库名;
+
+10）如何列出表"xrt"内name域值为"tecmint"，web_address域值为"tecmint.com"的所有数据？
+
+答：
+
+select  *  from  xrt  where  name="tecmint" and  web_address="tecmint.com";
+
+1) 如何使用awk查看TCP连接状态？
+
+答：ss -ant |awk '{print $1}'
+
+netstat -ant |awk '{print $6}'
+
+2) 有个txt文件内容如下：
+
+http://a.domain.com/l.html
+
+http://b.domain.com/l.html
+
+http://c.domain.com/l.html
+
+http://a.domain.com/2.html
+
+http://b.domain.com/2.html
+
+http://a.domain.com/3.html
+
+要求：编写脚本获取主机名、域名，并统计每个网址出现的次数，并排序。
+
+答：
+
+#！/bin/bash
+awk -F"[/.]" '{print $3}' txt    #单独获取主机名
+awk -F"[/]" '{print $3}'  txt    #获取完整域名
+awk -F"[/]" '{IP[$3]++} END{for(i in IP){print IP[i],i}}' txt | sort -n
+3) 至少说出一种linux下实现高可用的方案名称？
+
+答：keepalived，HeartBeat
+
+4）简述下负载均衡与高可用的概念？
+
+答：
+
+LB（Load_balancing）: 多台服务器平均响应客户端的多次连接请求。
+
+HA（High Availability）: 主备模式，主服务器宕机后，备用服务器才接替工作。
+
+5）列举几种你知道的LVS调度算法？
+
+答：
+
+轮询（Round Robin）
+
+加权轮询（Weighted Round Robin）
+
+最少连接（Least Connections）
+
+加权最少连接（ Weighted Least Connections ）
+
+源地址哈希值（source hash）
+
+6）如果你们公司的网站访问很慢，你会如何排查？
+
+答：
+
+查看流量(Zabbix,ifconfig,sar,ping延迟… …)
+
+系统负载(Zabbix,uptime,sar,top,ps,free查看CPU和内存)
+
+日志（数据库日志-慢查询日志、web服务器日志、ELK）
+
+DNS解析；ss端口状态、并发量；本机时间（时间错误会导致服务器故障）
+
+浏览器F12（开发者工具）
+
+7）你会用什么方法来查看某个应用服务的流量使用情况?
+
+答：
+
+ifconfig eth0（查看网卡整体流量）
+
+iftop（需要安装iftop软件包，实时查看具体IP、端口的流量，iftop -P）
+
+iptraf-ng (需要安装iptraf-ng软件包，实时查看IP、端口的流量)
+
+sar -n DEV（需要安装sysstat软件包，查看历史网卡流量，或者实时查看流量）
+
+nethogs eth0（需要安装nethogs软件包，实时查看进程流量）
+
+查看网站的访问日志（利用awk统计资源的大小并求和）
+
+通过zabbix查看软件流量
+
+1）Git的主要功能是什么。它的常用命令有哪些？
+
+答：
+
+Git是一个分布式的版本控制软件，支持离线操作，主要功能为版本控制，支持日志、数据恢复等功能。
+
+主要命令：
+
+git clone、git add、git commit、git log、git branch、git checkout、git pull、git merge等。
+
+2）工作中你都写过什么脚本？
+
+答：
+
+监控脚本（监控系统、监控服务、监控硬件信息、监控性能、安全监控等）
+
+系统初始化脚本（创建目录，创建账户，安装软件包，设置权限，修改内核参数等）
+
+一键部署（源码安装脚本）
+
+备份脚本（自动备份数据库，备份网站数据，备份日志，备份配置文件等）
+
+日志分析脚本（分析日志数据，汇总并统计相关信息，如PV、UV等）
+
+3）Nginx你用到哪些模块,在proxy模块中你配置哪些参数？
+
+答：
+
+ngx_http_core_module（核心模块，包含http、server_name、root等配置参数）
+
+ngx_http_access_module（访问控制模块，包含allow和deny配置参数）
+
+ngx_http_auth_basic_module（用户认证模块，包含auth_basic等配置参数）
+
+ngx_http_charset_module（字符集模块，包含charset utf8等配置参数）
+
+ngx_http_fastcgi_module（fastcgi模块，包含fastcgi_pass等配置参数）
+
+ngx_http_gzip_module（压缩模块，包含gzip、gzip_type等配置参数）
+
+ngx_http_limit_conn_module（限制并发量模块，包含limit_conn等参数）
+
+ngx_http_log_module（日志模块，包含access_log等配置参数）
+
+ngx_http_proxy_module（代理模块，包含proxy_pass等配置参数）
+
+ngx_http_rewrite_module（地址重写模块，包含rewrite、break、last等配置参数）
+
+ngx_http_ssl_module（加密模块，包含ssl_certificate、ssl_certificate_key等参数）
+
+ngx_http_stub_status_module（状态模块，包含stub_status配置参数）
+
+ngx_http_upstream_module(调度器模块，包含upstream、hash、ip_hash等配置参数)
+
+ngx_stream_core_module（4层代理模块）
+
+在proxy模块中有proxy_pass、proxy_cache、proxy_cache_path、proxy_connect_timeout、proxy_limit_rate等参数）
+
+4）HTTP常见状态码有哪些，分别是什么含义？
+
+参考答案：
+
+5）linux系统中你会用什么命令查看硬件使用的状态信息?
+
+答：
+
+uptime、lscpu查看CPU
+
+free查看内存
+
+lsblk、df、iostat查看磁盘
+
+ifconfig、ip a s查看网卡
+
+dmidecode查看主板设备信息
+
+6）如果你用 grep -i "error" 过滤只是包含error的行，想同时过滤error上面和下面的行如何实现？
+
+答：
+
+grep -i "error" 文件 -A 后面的行数 -B 前面的行数
+
+grep -i "error" 文件 -C 前后的行数
