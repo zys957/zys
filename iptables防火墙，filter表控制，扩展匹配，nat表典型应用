@@ -1,0 +1,266 @@
++++++++++++++监控与安全_day06_学习任务
+	一、iptables防火墙服务介绍  firewalld(RHEL7/8)  RHEL6(iptables)
+		
+[root@zabbix05 ~]# systemctl  status firewalld
+[root@zabbix05 ~]# systemctl  stop firewalld
+[root@zabbix05 ~]# systemctl  disable firewalld
+
+[root@zabbix05 ~]# yum -y  install  iptables-services
+[root@zabbix05 ~]# systemctl  start iptables
+[root@zabbix05 ~]# systemctl  enable iptables
+		1.2 iptables防火墙服务的组成？
+			4张表：功能分类
+				包过滤功能 filter表
+				地址转换   nat表
+				打标记     mangle表
+				状态跟踪   raw表
+
+			5条链：数据包传输的方向
+				匹配进入防火墙主机的ip包   INPUT链 
+				匹配从防火墙主机出去的ip包  OUTPUT链
+				匹配经过防火墙主机的ip包    FORWARD链
+				匹配路由前的Ip包		   PREROUTING链
+				匹配路由后的Ip包            POSTROUTING链
+		1.3 管理防火墙服务命令iptables的使用
+
+			命令格式：
+			]# iptables -t  表  选项  链名  匹配条件 -j 处理动作
+
+		        防火墙服务的逻辑关系 ： iptables服务 -->表 --->链 ----> 规则 ---> 处理动作
+
+
+			规则匹配顺序
+				顺序比对，匹配即停止（LOG除外）
+				若无任何匹配，则按该链的默认策略处理
+ 
+			处理动作包括哪些？
+				放行 ACCEPT
+				丢弃 DROP
+				拒绝 REJECT
+				源地址转换 SNAT
+				目标地址转换 DNAT 
+				
+			查看命令的帮助信息
+				]# iptables --help
+				]# man iptables
+
+			常用选项的使用： -L -n  -D -A  -I  -F  -P --line-numbers
+
+   24  iptables -t filter  -L
+   25  iptables -t filter  -nL
+   26  iptables -t filter  -nL --line-numbers
+   27  iptables -t filter  -nL INPUT --line-numbers
+   28  iptables  -nL INPUT --line-numbers
+   29  iptables  -nL 
+   30  iptables -t nat  -nL INPUT --line-numbers
+   31  iptables -t nat  -nL 
+   32  iptables -t mangle  -nL 
+   33  iptables -t raw  -nL 
+]# iptables -t filter -D INPUT 4				
+]# iptables -t filter -F INPUT
+]# iptables -t filter -F
+
+[root@zabbix05 ~]# iptables -t filter -A INPUT -p tcp --dport 22 -j ACCEPT
+[root@zabbix05 ~]# iptables -t filter -I INPUT  -p icmp  -j ACCEPT
+[root@zabbix05 ~]# iptables -t filter  -I INPUT 2 -p tcp --dport 80 -j ACCEPT
+[root@zabbix05 ~]# iptables -t filter  -P INPUT DROP
+[root@zabbix05 ~]# iptables-save > /etc/sysconfig/iptables
+
+		环境准备
+192.168.4.50]# 设置网关
+  294  route -n  查看网关
+  295  route add  default gw  192.168.4.5 设置网关
+
+  296  route -n
+  297  route del  default gw  192.168.4.5 删除
+  298  route -n
+
+  299  route add  default gw  192.168.4.5
+
+防火墙192.168.2.5主机：开启内核路由转发功能
+[root@zabbix05 ~]# cat  /proc/sys/net/ipv4/ip_forward
+0
+[root@zabbix05 ~]# echo  1 >   /proc/sys/net/ipv4/ip_forward
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# cat  /proc/sys/net/ipv4/ip_forward
+1
+[root@zabbix05 ~]# echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+
+
+192.168.2.100]# 设置网关
+  294  route -n
+  295  route add  default gw  192.168.2.5
+
+  296  route -n
+  297  route del  default gw  192.168.2.5
+  298  route -n
+
+  299  route add  default gw  192.168.2.5
+
+测试 
+[root@zabbix05 ~]# tcpdump  -i ens33 icmp
+[root@web100 ~]# ping  192.168.4.50
+				环境准备   10分钟 到  11:43 
+192.168.4.50]# 设置网关
+  294  route -n  查看网关
+  295  route add  default gw  192.168.4.5 设置网关
+
+  296  route -n
+  297  route del  default gw  192.168.4.5 删除
+  298  route -n
+
+  299  route add  default gw  192.168.4.5
+
+防火墙192.168.2.5主机：开启内核路由转发功能
+[root@zabbix05 ~]# cat  /proc/sys/net/ipv4/ip_forward
+0
+[root@zabbix05 ~]# echo  1 >   /proc/sys/net/ipv4/ip_forward
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# cat  /proc/sys/net/ipv4/ip_forward
+1
+[root@zabbix05 ~]# echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+
+
+192.168.2.100]# 设置网关
+  294  route -n
+  295  route add  default gw  192.168.2.5
+
+  296  route -n
+  297  route del  default gw  192.168.2.5
+  298  route -n
+
+  299  route add  default gw  192.168.2.5
+
+测试 
+[root@zabbix05 ~]# tcpdump  -i ens33 icmp
+[root@web100 ~]# ping  192.168.4.50
+
+
+	二、匹配条件
+		基本匹配条件  -p （udp  / tcp  /icmp）
+			      -s  (192.168.2.1  /   192.168.2.0/24)  -d   (192.168.2.1  /   192.168.2.0/24)
+			      --sport ( 80 22  3306  53 110 )  --dport ( 80 22  3306  53 110)
+				-i  (ens33  ens38  eth0  eth1 )  -o (ens33  ens38  eth0  eth1 )
+			      --icmp-type  ICMP类型 (请求包  应答包)
+
+		扩展匹配条件
+
+
+	三、filter表的使用
+			主机型防火墙（使用 filter 表的 INPUT链 ）
+			192.168.2.5主机自己保护自己
+			]# iptables -t filter  -P INPUT DROP
+			]# iptables  -t filter  -F
+			]# iptables  -t  filter  -A INPUT  -s 192.168.4.0/24 -p  tcp  --dport 22  -j ACCEPT
+			[root@zabbix05 ~]# iptables -t filter -A INPUT -p  tcp  --dport 80 -j ACCEPT
+			[root@zabbix05 ~]# iptables -t filter -I INPUT -p tcp  --dport 3306 -j ACCEPT
+			
+[root@zabbix05 ~]# iptables -t filter -nL INPUT --line-numbers
+Chain INPUT (policy DROP)
+num  target     prot opt source               destination         
+1    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:3306
+2    ACCEPT     tcp  --  192.168.4.0/24       0.0.0.0/0            tcp dpt:22
+3    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:80
+[root@zabbix05 ~]#
+
+[root@zabbix05 ~]# iptables-save  > /etc/sysconfig/iptables
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# cat /etc/sysconfig/iptables
+
+			允许本机 ping 其他主机但是，禁止其他主机 ping 本机
+[root@zabbix05 ~]# iptables -t filter -nL --line-numbers
+Chain INPUT (policy DROP)
+num  target     prot opt source               destination         
+1    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:3306
+2    ACCEPT     tcp  --  192.168.4.0/24       0.0.0.0/0            tcp dpt:22
+3    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:80
+
+Chain FORWARD (policy ACCEPT)
+num  target     prot opt source               destination         
+
+Chain OUTPUT (policy ACCEPT)
+num  target     prot opt source               destination         
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# iptables -t filter  -I INPUT -p icmp --icmp-type=echo-reply  -j ACCEPT
+[root@zabbix05 ~]#
+
+		网络型防火墙 （使用 filter 表的 FORWARD链） 练习15分钟 到 15:50
+			
+
+[root@zabbix05 ~]# iptables -t filter -P  FORWARD DROP		
+[root@zabbix05 ~]# iptables -t filter -A FORWARD -p tcp --sport 80 -j ACCEPT
+[root@zabbix05 ~]# iptables -t filter -A FORWARD -p tcp --dport 80 -j ACCEPT		  
+[root@zabbix05 ~]# iptables -t filter -A FORWARD -p tcp --sport 22 -j ACCEPT
+[root@zabbix05 ~]# iptables -t filter -A FORWARD -p tcp --dport 22 -j ACCEPT	
+
+[root@zabbix05 ~]# iptables -t filter  -nL FORWARD --line-numbers
+Chain FORWARD (policy DROP)
+num  target     prot opt source               destination         
+1    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:22
+2    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp spt:22
+
+
+3    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp spt:80
+4    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:80
+
+
+[root@zabbix05 ~]#
+
+[root@zabbix05 ~]# iptables -t filter -A FORWARD -p tcp --dport 3306 -j ACCEPT
+[root@zabbix05 ~]# iptables -t filter -A FORWARD -p tcp --sport 3306 -j ACCEPT
+
+		
+				
+		扩展匹配 例子
+			
+[root@zabbix05 ~]# iptables -t filter -I FORWARD -p icmp -m mac --mac-source 00:0c:29:d0:bb:ec -j REJECT
+
+[root@zabbix05 ~]# iptables -t filter -I FORWARD 5 -p tcp --dport 80  -m iprange --src-range 192.168.4.50-192.168.4.60   -j DROP
+[root@zabbix05 ~]#
+
+[root@zabbix05 ~]#iptables -t filter -A FORWARD -p tcp -m multiport --dports 22,80,3306,6379,8080 -j ACCEPT
+[root@zabbix05 ~]#iptables -t filter -A FORWARD -p tcp -m multiport --dports 22,80,3306,6379,8080 -j ACCEPT
+
+把用基本匹配条件的匹配服务的规则删除
+
+[root@zabbix05 ~]# iptables -t filter  -nL FORWARD --line-numbers
+Chain FORWARD (policy DROP)
+num  target     prot opt source               destination         
+1    REJECT     icmp --  0.0.0.0/0            0.0.0.0/0            MAC 00:0C:29:D0:BB:EC reject-with icmp-port-unreachable
+2    ACCEPT     icmp --  0.0.0.0/0            0.0.0.0/0           
+3    DROP       tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:80 source IP range 192.168.4.50-192.168.4.60
+4    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            multiport dports 22,80,3306,6379,8080
+5    ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            multiport sports 22,80,3306,6379,8080
+[root@zabbix05 ~]#
+			
+	写防火墙规则
+[root@zabbix05 ~]# iptables -t nat -nL  POSTROUTING
+Chain POSTROUTING (policy ACCEPT)
+target     prot opt source               destination         
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# 
+
+[root@zabbix05 ~]# iptables -t nat -A  POSTROUTING -s 192.168.4.0/24 -p tcp --dport 80 -j SNAT --to-source 192.168.2.5
+
+公网地址不固定情况下规则的写法
+
+]# iptables -t nat -A  POSTROUTING   -s 192.168.4.0/24   -o ens33   -j   MASQUERADE
+
+
+[root@zabbix05 ~]# iptables -t nat -nL  POSTROUTING
+Chain POSTROUTING (policy ACCEPT)
+target     prot opt source               destination         
+SNAT       tcp  --  192.168.4.0/24       0.0.0.0/0            tcp dpt:80 to:192.168.2.5
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# iptables -t nat -nL  POSTROUTING --line-numbers
+Chain POSTROUTING (policy ACCEPT)
+num  target     prot opt source               destination         
+1    SNAT       tcp  --  192.168.4.0/24       0.0.0.0/0            tcp dpt:80 to:192.168.2.5
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# iptables-save  > /etc/sysconfig/iptables
+[root@zabbix05 ~]# 
+
+
+测试方法1  [root@web100 ~]# tail -f  /etc/httpd/logs/access_log
+测试方法2  [root@zabbix05 ~]# tcpdump  -i ens33  tcp  port 80	
+客户端访问 [root@host50 ~]# curl  http://192.168.2.101
