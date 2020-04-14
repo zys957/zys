@@ -1,0 +1,316 @@
+++++++++++++++RDMBS2_DAY04 MHA知识点回顾
+		1 集群环境准备:  mysql主从同步  ssh免密登录  安装MHA依赖的软件包
+		2 配置管理主机： 编写主配置文件 创建故障切换脚本 部署vip地址给当前的主数据库服务器
+		3 配置数据库服务器： 配置半同步复制模式  用户授权 备用数据库服务器启用binlog日志
+		4 恢复宕机的数据库服务器到集群里：手动同步数据/配置主从/添加到集群
+
+++++++++++++++RDBMS2_DAY05-----数据库的高可用集群
+		一 PXC集群
+			1.1 PXC介绍
+			1.2 机器准备
+			1.2 创建PXC集群
+				1.2.1  在3台服务器上安装软件 时间16:30 
+ ]# rpm -ivh libev-4.15-1.el6.rf.x86_64.rpm    //安装依赖
+
+ ]# yum  -y  install  percona-xtrabackup-24-2.4.13-1.el7.x86_64.rpm
+
+ ]# rpm -ivh qpress-1.1-14.11.x86_64.rpm     //安装依赖
+
+ ]# tar -xvf  Percona-XtraDB-Cluster-5.7.25-31.35-r463-el7-x86_64-bundle.tar
+
+ ]# yum -y  install  Percona-XtraDB-Cluster-*.rpm
+ 
+ 		       
+				1.2.2  修改3台服务器的配置文件
+ ]#cd /etc/percona-xtradb-cluster.conf.d/
+ ]# vim mysqld.cnf 
+       server_id=数字  #3台机器不允许相同
+
+]# vim wsrep.cnf
+wsrep_cluster_address=gcomm://192.168.4.71,192.168.4.72,192.168.4.73    #台机器要一样
+wsrep_node_address=192.168.4.73 #自己的ip
+wsrep_cluster_name=pxc-cluster  #台机器要一样
+wsrep_node_name=pxc-cluster-node-73 #自己的主机名
+wsrep_sst_auth="sstuser:123qqq...A" #台机器要一样
+				1.2.3  启动服务
+					1.2.3.1 在71主机做集群的初始配置
+[root@host71 ~]# systemctl  start mysql@bootstrap.service
+[root@host71 ~]# netstat  -utnlp  | grep 3306
+tcp6       0      0 :::3306                 :::*                    LISTEN      2144/mysqld         
+[root@host71 ~]# netstat  -utnlp  | grep 4567
+tcp        0      0 0.0.0.0:4567            0.0.0.0:*               LISTEN      2144/mysqld         
+[root@host71 ~]# ls /var/lib/mysql
+auto.cnf         grastate.dat       ibdata1          mysql.sock          server-key.pem
+ca-key.pem       gvwstate.dat       ib_logfile0      mysql.sock.lock     sys
+ca.pem           host71-bin.000001  ib_logfile1      performance_schema  xb_doublewrite
+client-cert.pem  host71-bin.000002  ibtmp1           private_key.pem
+client-key.pem   host71-bin.index   mysql            public_key.pem
+galera.cache     ib_buffer_pool     mysqld_safe.pid  server-cert.pem
+[root@host71 ~]# 
+[root@host71 ~]# grep password /var/log/mysqld.log 
+2020-03-27T17:11:08.956192Z 1 [Note] A temporary password is generated for root@localhost: +%c4>3?:QqUj
+[root@host71 ~]# mysql -uroot -p'+%c4>3?:QqUj'
+
+mysql> alter user root@"localhost" identified by "123456";
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> show databases;
+
+mysql> grant reload , lock tables , replication client , process on *.* to sstuser@"localhost" identified by  "123qqq...A";
+Query OK, 0 rows affected, 1 warning (0.01 sec)
+
+mysql> select user , host from mysql.user;
+
+					1.2.3.2 启动72主机的数据库服务
+
+ [root@host72 ~]# setenforce 0
+[root@host72 ~]# 
+[root@host72 ~]# ls /var/lib/mysql
+[root@host72 ~]# 
+[root@host72 ~]# systemctl  start mysql
+[root@host72 ~]# netstat  -utnlp  | grep 3306
+tcp6       0      0 :::3306                 :::*                    LISTEN      2186/mysqld         
+[root@host72 ~]# netstat  -utnlp  | grep 4567
+tcp        0      0 0.0.0.0:4567            0.0.0.0:*               LISTEN      2186/mysqld         
+[root@host72 ~]# ls /var/lib/mysql
+auto.cnf         host72-bin.000001    innobackup.prepare.log  server-key.pem
+ca-key.pem       host72-bin.index     mysql                   sys
+ca.pem           ib_buffer_pool       mysql.sock              xb_doublewrite
+client-cert.pem  ibdata1              mysql.sock.lock         xtrabackup_binlog_pos_innodb
+client-key.pem   ib_logfile0          performance_schema      xtrabackup_galera_info
+galera.cache     ib_logfile1          private_key.pem         xtrabackup_info
+grastate.dat     ibtmp1               public_key.pem          xtrabackup_master_key_id
+gvwstate.dat     innobackup.move.log  server-cert.pem
+[root@host72 ~]# 
+[root@host72 ~]# mysql -uroot -p123456
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 11
+Server version: 5.7.25-28-57-log Percona XtraDB Cluster (GPL), Release rel28, Revision a2ef85f, WSREP version 31.35, wsrep_31.35
+
+Copyright (c) 2009-2019 Percona LLC and/or its affiliates
+Copyright (c) 2000, 2019, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
++--------------------+
+4 rows in set (0.04 sec)
+
+mysql> select user , host from  mysql.user;
++---------------+-----------+
+| user          | host      |
++---------------+-----------+
+| mysql.session | localhost |
+| mysql.sys     | localhost |
+| root          | localhost |
+| sstuser       | localhost |
++---------------+-----------+
+4 rows in set (0.00 sec)
+
+mysql> 							
+						1.2.3.3 启动73主机的数据库服务
+
+[root@host73 ~]# setenforce 0
+[root@host73 ~]# ls /var/lib/mysql
+[root@host73 ~]# 
+[root@host73 ~]# systemctl  start mysql
+[root@host73 ~]# 
+[root@host73 ~]# netstat  -utnlp | grep 3306
+tcp6       0      0 :::3306                 :::*                    LISTEN      2216/mysqld         
+[root@host73 ~]# 
+[root@host73 ~]# netstat  -utnlp | grep 4567
+tcp        0      0 0.0.0.0:4567            0.0.0.0:*               LISTEN      2216/mysqld         
+[root@host73 ~]# ls /var/lib/mysql
+auto.cnf         host73-bin.000001    innobackup.prepare.log  server-key.pem
+ca-key.pem       host73-bin.index     mysql                   sys
+ca.pem           ib_buffer_pool       mysql.sock              xb_doublewrite
+client-cert.pem  ibdata1              mysql.sock.lock         xtrabackup_binlog_pos_innodb
+client-key.pem   ib_logfile0          performance_schema      xtrabackup_galera_info
+galera.cache     ib_logfile1          private_key.pem         xtrabackup_info
+grastate.dat     ibtmp1               public_key.pem          xtrabackup_master_key_id
+gvwstate.dat     innobackup.move.log  server-cert.pem
+[root@host73 ~]#
+
+[root@host73 ~]# mysql -uroot -p123456
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 11
+Server version: 5.7.25-28-57-log Percona XtraDB Cluster (GPL), Release rel28, Revision a2ef85f, WSREP version 31.35, wsrep_31.35
+
+Copyright (c) 2009-2019 Percona LLC and/or its affiliates
+Copyright (c) 2000, 2019, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
++--------------------+
+4 rows in set (0.05 sec)
+
+mysql> select user , host from mysql.user;
++---------------+-----------+
+| user          | host      |
++---------------+-----------+
+| mysql.session | localhost |
+| mysql.sys     | localhost |
+| root          | localhost |
+| sstuser       | localhost |
++---------------+-----------+
+4 rows in set (0.00 sec)
+
+mysql>
+						1.2.3.4 在任意每台数据服务器上查看集群信息
+
+mysql> show status like "%wsrep%";
+wsrep_incoming_addresses         | 192.168.4.72:3306,192.168.4.73:3306,192.168.4.71:3306 		
+wsrep_ready                      | ON 
+wsrep_cluster_status             | Primary                                              
+wsrep_connected                  | ON
+
+							
+				1.2.4  客户端访问集群存取数据  练习 5分钟到 10:01 
+					1.2.4.1 在任意1台数据库服务器上添加授权用户给客户端连接使用
+mysql> create database db10;
+mysql> create table db10.user(id int primary key  auto_increment , name char(10)  );
+mysql> grant select , insert on  db10.* to plj@"%" identified by "123456";
+						1.2.4.2 50客户端连接
+50]# mysql -h192.168.4.71 -uplj -p123456
+50]# mysql -h192.168.4.72 -uplj -p123456
+50]# mysql -h192.168.4.71 -uplj -p123456
+					休息+测试到 10:35
+				1.2.5 测试高可用功能
+					 停止集群中的任意1台主机的数据服务
+					 客户端依然可以连接其他数据服务器查看和存数据
+
+				1.2.6 测试故障主机自动恢复功能
+					 把数据库服务启动后，会自动加入集群并并同步宕机期间的数据。				
+	 
+		二 MySQL存储引擎 (理论比较多) 休息到 11:00 点    
+			2.1 存储引擎介绍
+				2.1.1 MySQL服务体系结构 
+					由8个组件组成
+					1 管理工具： 软件安装后提供的命令
+					2 连接池：验证客户端连接及系统资源
+					3 SQL接口 : 把命令传递给mysql服务处理
+					4 分析器：执行的sql命令是否有语法错误及是否有访问权限
+					5 优化器： 优化执行的sql命令
+					6 查询缓存：存储 客户端曾经查询过的数据，存储数据的空间是从系统的物理内存划分出来的。
+					7 存储引擎：MySQL服务软件自带的功能程序，
+						    不同的存储引擎有不同的功能和数据存储方式
+				
+					处理表的处理器（存储引擎决定对表的数据做访问时，数据服务如何处理客户端的访问。）
+					8 文件系统 ： 存储介质 （硬盘 iscsi ceph  lvm)
+
+				2.1.2 MySQL服务的工作过程
+					1 处理存储数据的工作过程
+
+					2 处理查询数据的工作过程
+			2.2 存储引擎的管理
+				1 查看存储引擎
+					1.1  查看数据库服务使用的存储引擎
+						mysql> show engines;
+
+					1.1  查看当前已有的表使用的存储引擎
+						mysql> show create table 库名.表名 \G
+
+
+				3 指定表使用的存储引擎
+					mysql> create table db3.user5(class char(10))engine=名;
+					mysql> create table db3.user5(class char(10))engine=memory;
+	
+				2 修改
+					2.1 修改数据库服务使用的存储引擎
+]# vim /etc/my.cnf					
+[mysqld]
+default-storage-engine="myisam"
+:wq
+
+]# systemctl  restart mysqld
+					2.2 修改表使用的存储引擎
+					 mysql> alter table db3.user5 engine=名;
+					 mysql> alter table db3.user5 engine=myisam;
+				
+			
+		练习存储引擎的使用 时间18分钟到 14:20  讲新知识		
+					
+				4 常用存储引擎介绍
+					4.1 myisam 存储引擎的特点
+						支持表级锁
+						不支持事务、事务回滚 、外键
+						表文件：
+							表名.frm  表结构
+							表名.MYI  表索引
+							表名.MYD  表数据
+
+					4.2 innodb 存储引擎的特点
+						支持行级锁
+						支持事务、事务回滚 、外键
+
+						表文件：
+							表名.frm 表结构
+							表名.ibd  表索引+表数据
+							
+					4.3 相关概念介绍
+                                            锁粒度：
+						表级锁：对1张表加锁
+						行级锁: 仅对被访问的行分别加锁
+					     锁类型：
+						读锁 共享锁(select）
+						写锁 排它锁或互斥锁（insert update  delete）
+
+					     锁的作用？ 解决并发访问时，对数据写冲突问题
+
+					     查看数据当前的锁信息：
+						mysql> show  status like "Table_locks_waited";
+
+				
+						事务？ 连接数据库服务后 操作数据 断开连接 ，这个过程被称作事务
+
+						事务回滚？ 操作数据错误时，可以恢复正确的状态。
+
+						事务日志文件：
+						    cd /var/lib/mysql/
+							ib_logfile0
+							ib_logfile1
+
+						外键？给外键字段赋值时，值只能在参考表的字段值里选择
+
+					4.4 事务特性
+						4.4.1 事务特性介绍
+							ACID 
+						4.4.2 事务特性演示 练习15分钟到 15:45 
+						连接1  
+						     create database db10;
+						     create table db10.t1(id int) engine=innodb;
+						     set autocommit=off;
+						     show variables like  "autocommit";
+						
+						     
+						 连接2  测试
+
+					建表时，如何决定表使用哪种存储引擎？
+						
+					查询访问多的表适合使用myisam存储引擎 节省CPU开销
+					写(I D U)操作多的表适合使用innodb存储引擎 并发访问量大
