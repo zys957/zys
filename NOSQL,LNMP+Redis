@@ -1,0 +1,231 @@
++++++++++++NoSQL_DAY01 
+	   1 相关概念 ： RDBMS  、NoSQL
+		
+	   2 Redis介绍
+
+	   3 搭建Redis 数据存储服务器  练习+休息到 30分钟到 17:00 
+  172  rpm -q gcc
+  173  yum -y  install gcc
+  174  tar -zxvf /var/ftp/upload/redis-4.0.8.tar.gz 
+  175  ls
+  176  cd redis-4.0.8/
+  177  ls
+  178  make
+  179  make install
+[root@host50 redis-4.0.8]# ./utils/install_server.sh 
+Welcome to the redis service installer
+This script will help you easily set up a running redis server
+
+Please select the redis port for this instance: [6379] 
+Selecting default: 6379
+Please select the redis config file name [/etc/redis/6379.conf] 
+Selected default - /etc/redis/6379.conf
+Please select the redis log file name [/var/log/redis_6379.log] 
+Selected default - /var/log/redis_6379.log
+Please select the data directory for this instance [/var/lib/redis/6379] 
+Selected default - /var/lib/redis/6379
+Please select the redis executable path [/usr/local/bin/redis-server] 
+Selected config:
+Port           : 6379
+Config file    : /etc/redis/6379.conf
+Log file       : /var/log/redis_6379.log
+Data dir       : /var/lib/redis/6379
+Executable     : /usr/local/bin/redis-server
+Cli Executable : /usr/local/bin/redis-cli
+Is this ok? Then press ENTER to go on or Ctrl-C to abort.
+Copied /tmp/6379.conf => /etc/init.d/redis_6379
+Installing service...
+Successfully added to chkconfig!
+Successfully added to runlevels 345!
+Starting Redis server...
+Installation successful!
+[root@host50 redis-4.0.8]#
+
+[root@host50 redis-4.0.8]# netstat  -utnlp  | grep redis-server
+tcp        0      0 127.0.0.1:6379          0.0.0.0:*               LISTEN      5456/redis-server 1 
+[root@host50 redis-4.0.8]# redis-cli 
+127.0.0.1:6379> 
+127.0.0.1:6379> set school tarena
+OK
+127.0.0.1:6379> keys *
+1) "school"
+127.0.0.1:6379> set name bob
+OK
+127.0.0.1:6379> keys *
+1) "school"
+2) "name"
+127.0.0.1:6379> get school
+"tarena"
+127.0.0.1:6379> get name
+"bob"
+127.0.0.1:6379> keys *
+1) "school"
+2) "name"
+127.0.0.1:6379> exit
+[root@host50 redis-4.0.8]# ls /var/lib/redis/6379/
+dump.rdb
+[root@host50 redis-4.0.8]# 
+
+
+	   4 常用命令的使用
+	    set   mset   get   mget      keys   type  
+		exists  ttl   expire  move 、select 
+		del   flushdb   flushall   save   shutdown
+ 
+           5 配置文件解析 （修改redis服务运行参数）
+			vim /etc/redis/6379.conf
+
+			[root@host50 redis-4.0.8]# vim /etc/redis/6379.conf 
+[root@host50 redis-4.0.8]# sed -n '70p;93p' /etc/redis/6379.conf 
+bind 192.168.4.50  #修改服务使用的ip地址
+port 6350   #修改服务使用的端口号
+[root@host50 redis-4.0.8]# 		
+
+[root@host50 redis-4.0.8]# netstat  -utnlp  | grep redis-server
+tcp        0      0 127.0.0.1:6379          0.0.0.0:*               LISTEN      5509/redis-server 1 
+[root@host50 redis-4.0.8]# 
+[root@host50 redis-4.0.8]# /etc/init.d/redis_6379 stop
+Stopping ...
+Redis stopped
+[root@host50 redis-4.0.8]# /etc/init.d/redis_6379 start
+Starting Redis server...
+[root@host50 redis-4.0.8]# netstat  -utnlp  | grep redis-server
+tcp        0      0 192.168.4.50:6350       0.0.0.0:*               LISTEN      5534/redis-server 1 
+[root@host50 redis-4.0.8]# 
+
+]# redis-cli  -h 192.168.4.50  -p 6350  #连接服务需指定ip 和端口
+
+]# redis-cli  -h 192.168.4.50  -p 6350 shutdown  #停止服务
+				
+			设置服务连接密码
+			/etc/init.d/redis_6379 stop
+
+			vim /etc/redis/6379.conf
+			bind 192.168.4.50
+			
+			port 6350
+			requirepass 123456
+			:wq
+			/etc/init.d/redis_6379 start
+			[root@host50 ~]# redis-cli  -h 192.168.4.50  -p 6350 -a 123456
+			
+
+  [root@host50 ~]# vim  /etc/init.d/redis_6379 
+ 43             $CLIEXEC -h 192.168.4.50 -p 6350 -a 123456 shutdown
+		:wq
+
+		/etc/init.d/redis_6379 stop
+
+				6.1 部署LNMP网站环境
+			6.1.1 安装源码的nginx
+			6.1.2 安装php-fpm
+			6.1.3 启动服务
+			6.1.4 测试配置
+
+  293  rpm -q gcc
+  294  rpm -q pcre-devel
+  295  rpm -q zlib-devel
+  296  yum  -y  install gcc pcre-devel zlib-devel
+  297  tar -zxvf /var/ftp/upload/nginx-1.12.2.tar.gz 
+  298  cd nginx-1.12.2/
+  299  ./configure 
+  300  make && make install
+  301  ls /usr/local/
+  302  ls /usr/local/nginx/
+  303  yum -y install php-fpm
+]# vim +65 /usr/local/nginx/conf/nginx.conf
+ 65         location ~ \.php$ {
+ 66             root           html;
+ 67             fastcgi_pass   127.0.0.1:9000;
+ 68             fastcgi_index  index.php;
+ 69             include        fastcgi.conf;
+ 70         }
+:wq
+
+[root@host51 nginx-1.12.2]# /usr/local/nginx/sbin/nginx  -t
+nginx: the configuration file /usr/local/nginx/conf/nginx.conf syntax is ok
+nginx: configuration file /usr/local/nginx/conf/nginx.conf test is successful
+[root@host51 nginx-1.12.2]#
+
+[root@host51 nginx-1.12.2]# /usr/local/nginx/sbin/nginx
+[root@host51 nginx-1.12.2]# 
+[root@host51 nginx-1.12.2]# netstat -utnlp  | grep  80
+tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN      4132/nginx: master  
+[root@host51 nginx-1.12.2]# setenforce 0
+[root@host51 nginx-1.12.2]# 
+[root@host51 nginx-1.12.2]# systemctl start php-fpm
+[root@host51 nginx-1.12.2]# netstat -utnlp  | grep  9000
+tcp        0      0 127.0.0.1:9000          0.0.0.0:*               LISTEN      4143/php-fpm: maste 
+[root@host51 nginx-1.12.2]#
+
+]# vim /usr/local/nginx/html/test.php
+<?php
+    echo  "l love china" ;
+?>
+:wq
+
+[root@host51 nginx-1.12.2]# curl  http://localhost/test.php
+l love china
+
+				6.2 配置PHP支持Redis
+					6.2.1 安装提供redis模块的软件
+					6.2.2 加载redis模块
+			
+]# yum -y  install php  php-devel automake autoconf
+332  tar -zxvf /var/ftp/upload/php-redis-2.2.4.tar.gz 
+  333  ls
+  334  cd phpredis-2.2.4/
+  335  ls
+  336  phpize 
+  337  ls
+  338  ./configure  --with-php-config=/usr/bin/php-config 
+  339  make
+
+[root@host51 phpredis-2.2.4]# make install
+Installing shared extensions:     /usr/lib64/php/modules/
+[root@host51 phpredis-2.2.4]# 
+[root@host51 phpredis-2.2.4]# ls /usr/lib64/php/modules/
+curl.so  fileinfo.so  json.so  phar.so  redis.so  zip.so
+[root@host51 phpredis-2.2.4]#
+
+]# vim  +728 /etc/php.ini
+ 728 extension_dir = "/usr/lib64/php/modules/"
+ 729 ; On windows:
+ 730 extension = "redis.so"
+:wq
+
+[root@host51 phpredis-2.2.4]# systemctl  restart  php-fpm
+[root@host51 phpredis-2.2.4]# 
+
+			6.3 测试配置
+			6.3.1 查看模块	
+
+[root@host51 phpredis-2.2.4]# php -m  | grep -i redis
+redis
+[root@host51 phpredis-2.2.4]# 
+
+
+
+			6.3.2 编写存取数据的php脚本并访问脚本
+]# vim /usr/local/nginx/html/x.php
+<?php
+$redis = new redis();
+$redis->connect("192.168.4.50","6350");
+$redis->auth("123456");
+$redis->set("school","tarena");
+echo $redis->get("school");
+?>
+
+[root@host51 phpredis-2.2.4]# curl  http://localhost/x.php
+tarena
+			6.3.3 在数据库服务器本机查看数据
+
+[root@host50 ~]# redis-cli  -h 192.168.4.50  -p 6350 -a 123456
+192.168.4.50:6350> keys *
+1) "school"
+2) "y"
+3) "z"
+4) "x"
+192.168.4.50:6350> get school
+"tarena"
+192.168.4.50:6350> 			
