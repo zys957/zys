@@ -1,0 +1,564 @@
++++++++++++++监控与安全_day05_学习任务 192.168.2.5
+	一、系统审计 （audit服务）
+		1.1 服务介绍
+
+		1.2 安装软件并启动服务  时间8分钟到 15:53 
+			[root@zabbix05 ~]# rpm -q audit  | yum  -y  install audit
+			[root@zabbix05 ~]# rpm -q audit 
+			audit-2.8.1-3.el7.x86_64
+			[root@zabbix05 ~]# systemctl  status auditd  //先看一下服务的状态
+			[root@zabbix05 ~]# systemctl  start auditd
+			[root@zabbix05 ~]# systemctl  enable auditd
+[root@zabbix05 ~]# grep "log_file" /etc/audit/auditd.conf 
+log_file = /var/log/audit/audit.log
+
+:wq
+			[root@zabbix05 ~]# wc -l  /var/log/audit/audit.log 
+4331 /var/log/audit/audit.log
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# aureport  //生成审计报表
+
+
+		1.3 自定义审计规则
+			查看自定义审计规则
+			]# auditctl --help
+			1.3.1 命令行定义 临时生效      练习时间8分钟到 16:16
+
+命令格式 ： ]# auditctl  -w  路径  -p 权限  -k  规则名称
+
+
+[root@zabbix05 ~]# auditctl -l
+No rules
+[root@zabbix05 ~]# auditctl -w /etc/passwd -p wa -k xxx_plj
+[root@zabbix05 ~]# auditctl -w /var/lib/mysql  -p wa -k plj_dba
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# which  fdisk
+/usr/sbin/fdisk
+[root@zabbix05 ~]# auditctl -w /usr/sbin/fdisk  -p x  -k plj_fdisk
+[root@zabbix05 ~]# auditctl -l
+-w /etc/passwd -p wa -k xxx_plj
+-w /var/lib/mysql -p wa -k plj_dba
+-w /usr/sbin/fdisk -p x -k plj_fdisk
+[root@zabbix05 ~]# 
+			1.3.2 编辑配置定义审计规则，永久有效
+
+[root@zabbix05 ~]# auditctl -l >> /etc/audit/rules.d/audit.rules 
+[root@zabbix05 ~]# tail -5 /etc/audit/rules.d/audit.rules 
+-f 1
+
+-w /etc/passwd -p wa -k xxx_plj
+-w /var/lib/mysql -p wa -k plj_dba
+-w /usr/sbin/fdisk -p x -k plj_fdisk
+[root@zabbix05 ~]# 			
+
+		        1.3.3 测试  时间10分钟到 16:41  到  16:50 讲新知识
+				用户登录系统后执行与审计规则匹配的操作
+				]# useradd  bob1
+
+				系统管理员root用户查看审计日志
+				]# ausearch -k  xxx_plj
+
+				违反的规则？ key="xxx_plj"
+				执行操作的用户是谁？uid=0
+				执行操作的时间？time->Sat Apr 11 00:23:13 2020
+				执行的结果？success=yes
+				执行的命令是啥？  comm="useradd"
+
+	
+	二、服务安全
+		2.1 网站服务安全（ NGINX ）
+
+		2.2 数据库服务安全 （mairadb）  
+			2.2.1 安全优化配置
+[root@zabbix05 ~]# mysqladmin -hlocalhost -uroot  password  "123456"  //设置登录密码
+[root@zabbix05 ~]# mysql 没密码不允许登录了 
+ERROR 1045 (28000): Access denied for user 'root'@'localhost' (using password: NO)
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# mysql -uroot -p123456  //使用设置的密码登录
+			
+[root@zabbix05 ~]# mysql_secure_installation  //执行优化脚本
+输入旧密码 123456
+配置新root密码 （2次输入要相同）
+Remove anonymous users（删除匿名账户）Y
+Disallow root login remotely?（禁止root远程登录）Y
+Remove test database（删除测试数据库）Y
+Reload privilege（刷新权限）Y
+
+
+			mariadb优化2 ：
+				定期修改数据库管理员root本机登录密码
+				]#mysql  -uroot -p654321
+				>set password for  root@"localhost"=password("redhat");
+MariaDB [(none)]> select user , host ,password from mysql.user where user="root";
++------+-----------+-------------------------------------------+
+| user | host      | password                                  |
++------+-----------+-------------------------------------------+
+| root | localhost | *84BB5DF4823DA319BBF86C99624479A198E6EEE9 |
+| root | 127.0.0.1 | *2A032F7C5BA932872F0F045E0CF6B53CF702F2C5 |
+| root | ::1       | *2A032F7C5BA932872F0F045E0CF6B53CF702F2C5 |
++------+-----------+-------------------------------------------+
+3 rows in set (0.00 sec)
+
+MariaDB [(none)]> update mysql.user set password=password("123456")
+    -> where
+    -> user="root" and host="localhost";
+Query OK, 1 row affected (0.00 sec)
+Rows matched: 1  Changed: 1  Warnings: 0
+
+MariaDB [(none)]> flush privileges;
+Query OK, 0 rows affected (0.00 sec)
+
+MariaDB [(none)]> exit
+Bye
+[root@zabbix05 ~]# mysql -uroot -p123456
+
+						mariadb优化3 ： 删除历史文件   2分钟到 17:32 
+			        ]# history -c 
+				]# rm -rf  ~/.bash_history  
+				]# rm -rf  ~/.mysql_history
+  
+			mariadb优化4 ： 数据备份
+				mysqldump/mysql 、 binlog/mysqlbinlog 、innobackupex
+				mysql主从同步   、 PXC、MHA集群
+ 	
+			mariadb优化5 ： 用户管理
+					添加访问数据新用户 
+>grant 权限列表 on  库名  to  用户@"客户端地址" identified by "密码" [with  grant option];
+>revoke  权限列表 on  库名  from 用户@"客户端地址";
+
+			通过抓包可以获知：数据库服务器是否被客户端访问及 访问的库 表 数据、 连接的用户
+	
+		2.3 TOMCAT网站服务安全
+			  2.3.1 安装软件并运行tomcat服务
+	[root@zabbix05 ~]# yum -y  install  java-1.8.0-openjdk	
+	[root@zabbix05 ~]# tar -zxvf apache-tomcat-8.0.30.tar.gz			
+	[root@zabbix05 ~]# mv apache-tomcat-8.0.30 /usr/local/tomcat
+[root@zabbix05 ~]# /usr/local/tomcat/bin/startup.sh 
+Using CATALINA_BASE:   /usr/local/tomcat
+Using CATALINA_HOME:   /usr/local/tomcat
+Using CATALINA_TMPDIR: /usr/local/tomcat/temp
+Using JRE_HOME:        /usr
+Using CLASSPATH:       /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar
+Tomcat started.
+[root@zabbix05 ~]#
+
+[root@zabbix05 ~]# netstat  -utnlp  | grep  8080
+tcp6       0      0 :::8080                 :::*                    LISTEN      2967/java           
+[root@zabbix05 ~]# echo "hahaha" > /usr/local/tomcat/webapps/ROOT/test.html
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# curl http://localhost:8080/test.html
+hahaha
+[root@zabbix05 ~]# 
+			
+						tomcat优化配置1: 隐藏软件名和版本号
+]# yum -y install java-1.8.0-openjdk-devel
+]# cd lib/  ;  jar -xf catalina.jar
+				
+[root@zabbix05 util]# cd /usr/local/tomcat/lib/org/apache/catalina/util
+
+[root@zabbix05 util]# tail -3  ServerInfo.properties 
+server.info=Nginx/9.0.30
+server.number=9.0.30.0
+server.built=Dec 1 2015 22:30:46 UTC
+[root@zabbix05 util]# 
+
+[root@zabbix05 util]# vim  +69  /usr/local/tomcat/conf/server.xml 
+    <Connector port="8080" protocol="HTTP/1.1"
+               connectionTimeout="20000"
+               redirectPort="8443" server="apache"/>
+:wq
+
+]# /usr/local/tomcat/bin/shutdown.sh
+]# /usr/local/tomcat/bin/startup.sh
+
+[root@web100 ~]# curl -I  http://192.168.2.5:8080
+HTTP/1.1 200 OK
+Content-Type: text/html;charset=UTF-8
+Transfer-Encoding: chunked
+Date: Sat, 11 Apr 2020 09:43:55 GMT
+Server: apache
+
+[root@web100 ~]# 
+[root@web100 ~]# curl -I  http://192.168.2.5:8080/test.html
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+ETag: W/"7-1586541281000"
+Last-Modified: Fri, 10 Apr 2020 17:54:41 GMT
+Content-Type: text/html
+Content-Length: 7
+Date: Sat, 11 Apr 2020 09:44:08 GMT
+Server: apache
+
+[root@web100 ~]#
+
+[root@web100 ~]# curl  http://192.168.2.5:8080/test2.html
+<!DOCTYPE html><html><head><title>Nginx/9.0.30 - Error report</title><style type="text/css">H1 {font-family:Tahoma,Arial,sans-serif;color:white;background-color:#525D76;font-size:22px;} H2 {font-family:Tahoma,Arial,sans-serif;color:white;background-color:#525D76;font-size:16px;} H3 {font-family:Tahoma,Arial,sans-serif;color:white;background-color:#525D76;font-size:14px;} BODY {font-family:Tahoma,Arial,sans-serif;color:black;background-color:white;} B {font-family:Tahoma,Arial,sans-serif;color:white;background-color:#525D76;} P {font-family:Tahoma,Arial,sans-serif;background:white;color:black;font-size:12px;}A {color : black;}A.name {color : black;}.line {height: 1px; background-color: #525D76; border: none;}</style> </head><body><h1>HTTP Status 404 - /test2.html</h1><div class="line"></div><p><b>type</b> Status report</p><p><b>message</b> <u>/test2.html</u></p><p><b>description</b> <u>The requested resource is not available.</u></p><hr class="line"><h3>Nginx/9.0.30</h3></body></html>[root@web100 ~]# 
+			
+			tomcat优化配置2: 让服务已普通账户身份启动
+
+[root@zabbix05 util]# /usr/local/tomcat/bin/shutdown.sh 
+ 
+[root@zabbix05 util]# useradd tomcat
+[root@zabbix05 util]# chown -R tomcat:tomcat /usr/local/tomcat/
+
+[root@zabbix05 util]# su - tomcat  -c '/usr/local/tomcat/bin/startup.sh' 
+Using CATALINA_BASE:   /usr/local/tomcat
+Using CATALINA_HOME:   /usr/local/tomcat
+Using CATALINA_TMPDIR: /usr/local/tomcat/temp
+Using JRE_HOME:        /
+Using CLASSPATH:       /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar
+Tomcat started.
+[root@zabbix05 util]# netstat -utnlp | grep 8080
+tcp6       0      0 :::8080                 :::*                    LISTEN      2004/java           
+
+[root@zabbix05 util]# ps -aux | grep java
+tomcat     2004 24.8 15.4 2169800 74652 ?       Sl   17:51   0:07 //bin/java -Djava.util.logging.config.file=/usr/local/tomcat/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djava.endorsed.dirs=/usr/local/tomcat/endorsed -classpath /usr/local/tomcat/bin/bootstrap.jar:/usr/local/tomcat/bin/tomcat-juli.jar -Dcatalina.base=/usr/local/tomcat -Dcatalina.home=/usr/local/tomcat -Djava.io.tmpdir=/usr/local/tomcat/temp org.apache.catalina.startup.Bootstrap start
+root       2028  0.0  0.2 112720   968 pts/0    R+   17:52   0:00 grep --color=auto java
+
+[root@zabbix05 util]# vim /etc/rc.local
+su - tomcat  -c '/usr/local/tomcat/bin/startup.sh'
+:wq
+		tomcat优化配置3：删除默认的测试页面
+
+[root@zabbix05 ~]# rm -rf /usr/local/tomcat/webapps/*
+
+[root@zabbix05 ~]# mkdir /usr/local/tomcat/webapps/ROOT
+
+[root@zabbix05 ~]# echo  "xxxx" > /usr/local/tomcat/webapps/ROOT/index.html
+
+[root@zabbix05 ~]# curl http://localhost:8080
+yyyy
+[root@zabbix05 ~]# 
+
+
+
+		2.1 网站服务安全（ NGINX ）
+
+
+			 优化配置1： 按需安装（最小安装原则）
+]# vim  /usr/local/nginx/conf/nginx.conf
+   server {
+	autoindex on ;
+:wq
+
+]#/usr/local/nginx/sbin/nginx  -t
+
+]#/usr/local/nginx/sbin/nginx -s stop
+]#/usr/local/nginx/sbin/nginx
+
+[root@zabbix05 nginx-1.12.2]# mkdir /usr/local/nginx/html/game
+[root@zabbix05 nginx-1.12.2]# echo "xxx" > /usr/local/nginx/html/game/a.html
+[root@zabbix05 nginx-1.12.2]# echo "xxx2" > /usr/local/nginx/html/game/b.html
+[root@zabbix05 nginx-1.12.2]# echo "xxx3" > /usr/local/nginx/html/game/c.html
+[root@zabbix05 nginx-1.12.2]# ls /usr/local/nginx/html/game/
+a.html  b.html  c.html
+[root@zabbix05 nginx-1.12.2]#
+
+
+http://192.168.2.5/game  自动列出目录写的所有网页
+
+   94  tar -zxvf /var/ftp/upload/nginx-1.12.2.tar.gz   重新新编译安装
+   95  ls
+   96  cd nginx-1.12.2/
+  117  ./configure --without-http_autoindex_module
+  118  make
+  119  make install
+  120  /usr/local/nginx/sbin/nginx  -V
+
+]# vim  /usr/local/nginx/conf/nginx.conf
+   server {
+	#autoindex on ;
+:wq
+
+]#/usr/local/nginx/sbin/nginx  -t
+
+]#/usr/local/nginx/sbin/nginx -s stop
+]#/usr/local/nginx/sbin/nginx
+
+
+http://192.168.2.5/game 报错
+
+]# echo  "xxx" > /usr/local/nginx/html/game/index.html  写首页
+
+]#curl http:////192.168.2.5/game 正常
+
+			nginx优化2： 修改软件名
+
+[root@web100 ~]# curl -I  http://192.168.2.5/game/  没修改前
+HTTP/1.1 200 OK
+Server: nginx/1.12.2
+
+
+]# /usr/local/nginx/sbin/nginx -s stop
+
+]# vim +49 nginx-1.12.2/src/http/ngx_http_header_filter_module.c 	
+static u_char ngx_http_server_string[] = "Server: tomcat" CRLF;
+static u_char ngx_http_server_full_string[] = "Server: tomcat" CRLF;
+static u_char ngx_http_server_build_string[] = "Server: tomcat" CRLF;
+:wq
+
+[root@zabbix05 ~]# /usr/local/nginx/sbin/nginx -V
+nginx version: nginx/1.12.2
+built by gcc 4.8.5 20150623 (Red Hat 4.8.5-28) (GCC) 
+configure arguments: --without-http_autoindex_module
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# cd nginx-1.12.2/
+[root@zabbix05 nginx-1.12.2]# ./configure --without-http_autoindex_module && make && make install 
+
+]# /usr/local/nginx/sbin/nginx 
+
+[root@web100 ~]# curl -I  http://192.168.2.5/game/  修改后
+HTTP/1.1 200 OK
+Server: tomcat		
+
+
+		
+ 			14:00上课
+			nginx优化3： 限制并发 （限制同1台机器发起的多个访问 只处理几个）
+			2.100  ----> 2.5 
+				100
+				10
+				6
+			2.201 ------> 2.5
+
+				6
+]# vim /usr/local/nginx/conf/nginx.conf
+http {
+        limit_req_zone $binary_remote_addr zone=one:10m rate=1r/s;
+
+	server {
+        limit_req zone=one burst=5;
+:wq
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx -t
+nginx: the configuration file /usr/local/nginx/conf/nginx.conf syntax is ok
+nginx: configuration file /usr/local/nginx/conf/nginx.conf test is successful
+[root@zabbix05 nginx-1.12.2]# 
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx -s stop
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx
+[root@zabbix05 nginx-1.12.2]#
+
+[root@web100 ~]# ab -n 10  -c  10 http://192.168.2.5/game/
+[root@web100 ~]# ab -n 100  -c  100 http://192.168.2.5/game/
+
+			nginx优化4： 拒绝非法访问
+				NGINX网站服务器支持的访问方式 :  GET POST   PUT   HEAD  DELETE
+ ]# vim /usr/local/nginx/conf/nginx.conf
+            server {
+
+                if ($request_method !~ ^(GET|POST)$ ) {
+                     return 444;
+               }
+:wq
+		
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx -t
+nginx: the configuration file /usr/local/nginx/conf/nginx.conf syntax is ok
+nginx: configuration file /usr/local/nginx/conf/nginx.conf test is successful
+[root@zabbix05 nginx-1.12.2]# 
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx -s stop
+[root@zabbix05 nginx-1.12.2]# 
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx
+
+
+[root@web100 ~]# curl  -i -X GET http://192.168.2.5/game/a.html
+HTTP/1.1 200 OK
+Server: tomcat
+Date: Sat, 11 Apr 2020 14:48:59 GMT
+Content-Type: text/html
+Content-Length: 4
+Last-Modified: Sat, 11 Apr 2020 10:35:16 GMT
+Connection: keep-alive
+ETag: "5e919d64-4"
+Accept-Ranges: bytes
+
+xxx
+[root@web100 ~]# 
+[root@web100 ~]# curl  -i -X HEAD http://192.168.2.5/game/a.html
+curl: (52) Empty reply from server
+[root@web100 ~]# 
+        ]# curl  --help
+
+	-i  获取协议头部信息
+	-X  访问方式
+
+			nginx优化5： 防止buffer溢出
+
+	]# vim /usr/local/nginx/conf/nginx.conf
+		http {
+ client_body_buffer_size 1k;
+    client_header_buffer_size 1k;
+    client_max_body_size 1k;
+large_client_header_buffers 2 1k;
+:wq
+
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx -t
+nginx: the configuration file /usr/local/nginx/conf/nginx.conf syntax is ok
+nginx: configuration file /usr/local/nginx/conf/nginx.conf test is successful
+
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx -s stop
+[root@zabbix05 nginx-1.12.2]# /usr/local/nginx/sbin/nginx
+
+			三、Linux安全之打补丁
+		3.1 什么是打补丁
+		3.2 创建补丁文件  2.5
+			给单个文件创建补丁文件
+
+[root@zabbix05 ~]#vim test1.sh 
+#!/bin/bash
+echo  "hell wrld"
+:wq
+
+[root@zabbix05 ~]# cp test1.sh  test2.sh
+[root@zabbix05 ~]# vim  test2.sh 
+#!/bin/bash
+echo "hello boy"
+echo  "xxxhhhdcte"
+echo  "hell world"
+:wq
+
+[root@zabbix05 ~]# diff  -u  test1.sh  test2.sh 
+--- test1.sh	2020-04-11 23:48:13.041105132 +0800
++++ test2.sh	2020-04-11 23:48:54.433105399 +0800
+@@ -1,2 +1,4 @@
+ #!/bin/bash
+-echo  "hell wrld"
++echo "hello boy"
++echo  "xxxhhhdcte"
++echo  "hell world"
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# diff  -u  test1.sh  test2.sh  > bd.patch
+[root@zabbix05 ~]# 
+[root@zabbix05 ~]# cat bd.patch 
+--- test1.sh	2020-04-11 23:48:13.041105132 +0800
++++ test2.sh	2020-04-11 23:48:54.433105399 +0800
+@@ -1,2 +1,4 @@
+ #!/bin/bash
+-echo  "hell wrld"
++echo "hello boy"
++echo  "xxxhhhdcte"
++echo  "hell world"
+[root@zabbix05 ~]# 
+
+		
+		3.3 给文件打补丁  2.100
+
+[root@web100 ~]# which patch
+/usr/bin/which: no patch in (/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin)
+[root@web100 ~]# 
+[root@web100 ~]# yum -y install patch
+
+[root@web100 ~]# which patch
+/usr/bin/patch
+[root@web100 ~]#
+
+打补丁命令格式 ]# patch -p数字 <  目录名/名称.patch
+	 数字： 删除重复目录的个数
+
+撤销补丁命令格式 ]# patch -RE <  目录名/名称.patch
+
+			给单个文件打补丁
+[root@zabbix05 ~]# scp test1.sh  root@192.168.2.100:/root/
+                                                    
+[root@zabbix05 ~]# scp bd.patch  root@192.168.2.100:/root/
+                                                 
+[root@web100 ~]# cat test1.sh 
+#!/bin/bash
+echo  "hell wrld"
+[root@web100 ~]# cat bd.patch 
+--- test1.sh	2020-04-11 23:48:13.041105132 +0800
++++ test2.sh	2020-04-11 23:48:54.433105399 +0800
+@@ -1,2 +1,4 @@
+ #!/bin/bash
+-echo  "hell wrld"
++echo "hello boy"
++echo  "xxxhhhdcte"
++echo  "hell world"
+[root@web100 ~]# 
+[root@web100 ~]# patch  -p0 < bd.patch 
+patching file test1.sh
+[root@web100 ~]# cat test1.sh 
+#!/bin/bash
+echo "hello boy"
+echo  "xxxhhhdcte"
+echo  "hell world"
+[root@web100 ~]# 
+[root@web100 ~]# patch  -RE < bd.patch 
+patching file test1.sh
+
+[root@web100 ~]# cat test1.sh 
+#!/bin/bash
+echo  "hell wrld"
+[root@web100 ~]#	
+
+
+						给目录创建补丁文件（把多个文件的补丁信息放一起）
+			命令格式： diff  -uraN  旧目录  新目录
+
+[root@zabbix05 ~]# 环境准备
+  199  mkdir /demo
+  200  cd /demo/
+  201  mkdir source1
+  202  cd source1/
+  203  vim  test.sh  内容随便
+  
+  205  which find
+  206  cp /usr/bin/find ./
+
+  214  scp -r /demo/source1/  root@192.168.2.100:/demo/
+
+  216  mkdir /demo/source2
+  217  cp source1/test.sh  /demo/source2/
+  218  cp source1/find  /demo/source2/
+  219  cd /demo/source2
+  222  echo "11111" >> find 
+
+  225  vim test.sh  随便添加些新内容
+  
+  229  vim tmp.txt  创建新文件
+
+[root@zabbix05 ~]# diff -urNa /demo/source1 /demo/source2  > bd2.patch  创建目录补丁文件
+[root@zabbix05 ~]# scp  bd2.patch  root@192.168.2.100:/opt/  发送目录补丁文件
+
+
+
+			给目录打补丁（一起给多给文件打补丁）
+[root@web100 demo]# cd /demo/source1/
+[root@web100 source1]# 
+[root@web100 source1]# patch  -p3 < /opt/bd2.patch 
+patching file find
+patching file test.sh
+patching file tmp.txt
+[root@web100 source1]# ls
+find  test.sh  tmp.txt
+[root@web100 source1]# cat test.sh 
+#!/bin/bash
+echo  "aaaaa"
+echo "xxxhhhhxxx"
+echo "lllllxxxx"
+[root@web100 source1]# wc -l find 
+633 find
+[root@web100 source1]# 
+
+[root@web100 source1]# ls
+find  test.sh  tmp.txt
+[root@web100 source1]# 
+[root@web100 source1]# 
+[root@web100 source1]# patch  -RE < /opt/bd2.patch  撤销补丁
+patching file find
+patching file test.sh
+patching file tmp.txt
+[root@web100 source1]# ls
+find  test.sh
+[root@web100 source1]# cat test.sh 
+#!/bin/bash
+echo  "aaaaa"
+[root@web100 source1]# wc -l find 
+632 find
+[root@web100 source1]#
+
+
+root@web100 source1]# cd /
+[root@web100 /]# patch  -p1  < /opt/bd2.patch 
+patching file demo/source1/find
+patching file demo/source1/test.sh
+patching file demo/source1/tmp.txt
+[root@web100 /]#
