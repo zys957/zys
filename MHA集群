@@ -1,0 +1,408 @@
+1 相关概念 
+			集群：多台服务器提供相同的服务
+			集群分类：	  LB  、 HA 、 HPC
+			LB集群介绍：所有服务器平均分摊客户端的多次访问
+			HA集群介绍：主备模式，主服务器宕机时，备用服务器自动接替主服务器继续提供服务
+			集群服务软件:   LVS 、haproxy  、nginx 、keepalived
+	
+		2 MHA软件介绍 ?   MHA_manager  MHA_node
+
+		3 实验拓扑
+				准备实验使用的机器和软件包   20分钟  15:05  上课。
+		4 搭建集群
+			4.1 环境准备
+				4.1.1 安装yum源里没有的perl依赖软件（51 52 53 57） 到15:20
+					]# cd  mha
+				        ]# yum -y install perl-*.rpm
+
+				4.1.2 配置ssh免密登录
+					1 配置数据库服务器之间root  ssh免密登录
+[root@host51 mha]#
+   14  ssh-keygen 
+   15  ls ~/.ssh/
+   16  ssh-copy-id  root@192.168.4.52
+   17  ssh-copy-id  root@192.168.4.53
+   21  ssh root@192.168.4.52
+   22  ssh root@192.168.4.53
+   
+[root@host52 mha]#
+   14  ssh-keygen 
+   15  ls ~/.ssh/
+   16  ssh-copy-id  root@192.168.4.51
+   17  ssh-copy-id  root@192.168.4.53
+   21  ssh root@192.168.4.51
+   22  ssh root@192.168.4.53
+
+[root@host53 mha]#
+   14  ssh-keygen 
+   15  ls ~/.ssh/
+   16  ssh-copy-id  root@192.168.4.51
+   17  ssh-copy-id  root@192.168.4.52
+   21  ssh root@192.168.4.51
+   22  ssh root@192.168.4.52
+					2 配置管理主机57 root  ssh免密登录3台数据库服务器
+[root@host57 mha]#					
+   14  ssh-keygen 
+   15  ls ~/.ssh/
+   16  ssh-copy-id  root@192.168.4.51
+   17  ssh-copy-id  root@192.168.4.52
+   18  ssh-copy-id  root@192.168.4.53
+   19  history 
+   20  ssh root@192.168.4.51
+   21  ssh root@192.168.4.52
+   22  ssh root@192.168.4.53
+   										3 配置MySQL一主多从同步结构
+						3.1 配置主服务器192.168.4.51
+[root@host51 mha]# 
+       vim /etc/my.cnf
+	[mysqld]
+		server_id=51
+		log_bin=master51
+	:wq
+       ]# systemctl restart mysqld
+       ]# mysql -uroot -p123qqq...A	
+
+mysql> grant replication slave on  *.*  to  repluser@"%" identified by "123qqq...A";
+mysql> show master status;
+
+						3.2 配置从服务器192.168.4.52
+[root@host52 mha]# 
+       vim /etc/my.cnf
+	[mysqld]
+		server_id=52
+	:wq
+       ]# systemctl restart mysqld
+       ]# mysql -uroot -p123qqq...A	
+
+mysql> change master to master_host="192.168.4.51",master_user="repluser",master_password="123qqq...A",master_log_file="master51.000001",master_log_pos=154;
+
+mysql> start slave;
+
+mysql> show slave status \G
+
+						3.3 配置从服务器192.168.4.53
+[root@host53 mha]# 
+       vim /etc/my.cnf
+	[mysqld]
+		server_id=53
+	:wq
+       ]# systemctl restart mysqld
+       ]# mysql -uroot -p123qqq...A	
+
+mysql> change master to master_host="192.168.4.51",master_user="repluser",master_password="123qqq...A",master_log_file="master51.000001",master_log_pos=154;
+
+
+mysql> start slave;
+
+mysql> show slave status \G
+
+		4.2 配置管理主机 192.168.4.57
+				4.2.1 安装软件
+			[root@host57 mha]# yum -y install mha4mysql-node-0.56-0.el6.noarch.rpm 
+			]# yum -y install  perl-ExtUtils-*   perl-CPAN*
+			27  tar -zxvf mha4mysql-manager-0.56.tar.gz 
+    			29  cd mha4mysql-manager-0.56
+   			31  perl Makefile.PL 
+   			38  make
+   			39  make install
+		时间到 17:00点
+				4.2.2 创建并编辑主配置文件
+
+[root@host57 mha4mysql-manager-0.56]# ls samples/
+conf  scripts
+[root@host57 mha4mysql-manager-0.56]# ls samples/conf/
+app1.cnf  masterha_default.cnf
+[root@host57 mha4mysql-manager-0.56]# mkdir /etc/mha
+[root@host57 mha4mysql-manager-0.56]# cp samples/conf/app1.cnf  /etc/mha/
+[root@host57 mha4mysql-manager-0.56]# ls /etc/mha/
+app1.cnf
+[root@host57 mha4mysql-manager-0.56]# vim /etc/mha/app1.cnf
+
+[server default]
+manager_workdir=/etc/mha
+manager_log=/etc/mha/manager.log
+master_ip_failover_script=/etc/mha/master_ip_failover
+
+
+ssh_user=root
+ssh_port=22
+
+repl_user=repluser
+repl_password=123qqq...A
+
+user=root
+password=123qqq...A
+
+[server1]
+hostname=192.168.4.51
+port=3306
+candidate_master=1
+
+[server2]
+hostname=192.168.4.52
+port=3306
+candidate_master=1
+
+[server3]
+hostname=192.168.4.53
+port=3306
+candidate_master=1
+:wq
+				
+
+
+				4.2.3 创建故障切换脚本，并赋予执行权限
+				]# cd mha
+[root@host57 mha]# cp master_ip_failover  /etc/mha/
+[root@host57 mha]# cd /etc/mha/
+[root@host57 mha]# ls
+app1.cnf  master_ip_failover
+[root@host57 mha]# chmod +x master_ip_failover
+
+[root@host57 mha]# vim +35 master_ip_failover
+  35 my $vip = '192.168.4.100/24';  # Virtual IP 
+  36 my $key = "1";
+  37 my $ssh_start_vip = "/sbin/ifconfig ens33:$key $vip";
+  38 my $ssh_stop_vip = "/sbin/ifconfig ens33:$key down";
+:wq
+
+ 			
+				4.2.4 把故障切换脚本中指定的vip地址配置在 主服务器51上
+[root@host51 mha]# ifconfig  ens33:1 192.168.4.100/24
+[root@host51 mha]# ifconfig  ens33:1
+ens33:1: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 192.168.4.100  netmask 255.255.255.0  broadcast 192.168.4.255
+        ether 00:0c:29:d5:c9:38  txqueuelen 1000  (Ethernet)
+
+[root@host51 mha]# ifconfig  ens33
+ens33: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 192.168.4.51  netmask 255.255.255.0  broadcast 192.168.4.255
+
+			4.3 配置数据库服务器
+ 				配置数据库服务器51
+         		         1 加载master和slave角色模块 并启用模块，禁止自动删除中继日志文件
+ ]# vim /etc/my.cnf
+    plugin-load="rpl_semi_sync_master=semisync_master.so;rpl_semi_sync_slave=semisync_slave.so" 
+    rpl_semi_sync_master_enabled=1
+    rpl_semi_sync_slave_enabled=1
+
+    relay_log_purge=0
+  :wq
+					
+				 2 重启数据库服务
+				    ]# systemctl restart mysqld
+
+				配置数据库服务器52 	
+				 1 加载master和slave角色模块 并启用模块，禁止自动删除中继日志文件
+   ]# vim /etc/my.cnf
+	
+    plugin-load="rpl_semi_sync_master=semisync_master.so;rpl_semi_sync_slave=semisync_slave.so" 
+    rpl_semi_sync_master_enabled=1
+    rpl_semi_sync_slave_enabled=1
+    relay_log_purge=0	
+  :wq
+				 2 启用binlog日志
+				
+    ]# vim /etc/my.cnf
+      log_bin=master52
+				 3 数据数据同步连接用户repluser
+				  > grant replication slave on *.*  to  repluser@"%" identified by "123qqq...A";
+	
+				 4 重启数据库服务
+					]# systemctl restart mysqld
+
+				 5 查看slave 状态信息
+					]# show slave status \G
+
+					
+				配置数据库服务器53
+				 1 加载master和slave角色模块 并启用模块，禁止自动删除中继日志文件
+   ]# vim /etc/my.cnf
+	
+    plugin-load="rpl_semi_sync_master=semisync_master.so;rpl_semi_sync_slave=semisync_slave.so" 
+    rpl_semi_sync_master_enabled=1
+    rpl_semi_sync_slave_enabled=1
+    relay_log_purge=0	
+  :wq
+				 2 启用binlog日志
+
+     ]# vim /etc/my.cnf
+      log_bin=master52
+				 3 数据数据同步连接用户repluser
+           > grant replication slave on *.*  to  repluser@"%" identified by "123qqq...A";
+     
+			         4 重启数据库服务
+					]# systemctl restart mysqld
+
+				 5 查看slave 状态信息
+					]# show slave status \G
+
+			        公共配置
+					安装MHA_node软件
+					]# cd  mha
+					]# yum  -y  install mha4mysql-node-0.56-0.el6.noarch.rpm
+
+					添加监控用户root 密码是123qqq...A
+					> grant all on  *.*  to root@"%" identified by "123qqq...A";
+					
+		5 测试配置（192。168.4.57）
+		   	5.1 测试ssh免密登录配置	
+				]# masterha_check_ssh  --conf=/etc/mha/app1.cnf 
+					All SSH connection tests passed successfully.
+			5.2 测试主从同步配置
+				]# masterha_check_repl  --conf=/etc/mha/app1.cnf
+				    MySQL Replication Health is OK.
+		6 启动管理服务
+ ]# masterha_manager --remove_dead_master_conf --ignore_last_failover  --conf=/etc/mha/app1.cnf       
+ Fri Mar 27 17:58:48 2020 - [warning] Global configuration file /etc/masterha_default.cnf not found.  Skipping.
+ Fri Mar 27 17:58:48 2020 - [info] Reading application default configuration from  /etc/mha/app1.cnf..
+ Fri Mar 27 17:58:48 2020 - [info] Reading server configuration from /etc/mha/app1.cnf..
+
+[root@localhost mha]# masterha_check_status --conf=/etc/mha/app1.cnf 
+app1 (pid:3365) is running(0:PING_OK), master:192.168.4.51
+
+[root@localhost mha]# ls /etc/mha/
+app1.cnf  app1.master_status.health  manager.log  master_ip_failover
+[root@localhost mha]#
+
+
+]# masterha_stop --conf=/etc/mha/app1.cnf  # 停止管理服务的命令
+
+			7 测试集群配置
+			7.1 客户端访问集群存取数据
+				1 在数据库服务器授权连接用户
+					[root@host51 mha]# mysql -uroot -p123qqq...A
+ mysql> create database db9;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> create table db9.t1(id int);
+Query OK, 0 rows affected (0.07 sec)
+
+mysql> grant select , insert on db9.* to yaya5@"%" identified by "123qqq...A";
+
+	[root@host53 mha]# mysql -uroot -p123qqq...A -e 'show grants for yaya5@"%"'
+	[root@host52 mha]# mysql -uroot -p123qqq...A -e 'show grants for yaya5@"%"'
+			        
+				 2 在客户端连接VIP 访问数据库服务
+					[root@host50 ~]# mysql -h192.168.4.100 -uyaya5 -p123qqq...A
+mysql> insert into db9.t1 values(999);
+mysql> insert into db9.t1 values(999);
+mysql> insert into db9.t1 values(999);
+mysql> select  * from db9.t1;
+
+[root@host53 mha]# mysql -uroot -p123qqq...A -e 'select  * from db9.t1'
+[root@host52 mha]# mysql -uroot -p123qqq...A -e 'select  * from db9.t1'
+
+			7.2 测试集群的高可用
+				[root@host51 mha]# systemctl  stop mysqld
+				[root@host50 mha]# ping -c 5 192.168.4.100
+				mysql> exit
+					Bye
+[root@host50 ~]# mysql -h192.168.4.100 -uyaya5 -p123qqq...A
+mysql> select @@hostname;
++------------+
+| @@hostname |
++------------+
+| host52     |
++------------+
+1 row in set (0.00 sec)
+
+mysql> select * from  db9.t1;
++------+
+| id   |
++------+
+|  999 |
+|  999 |
+|  999 |
++------+
+3 rows in set (0.00 sec)
+
+mysql> insert into db9.t1 values(8888);
+
+mysql> insert into db9.t1 values(8888);				
+
+[root@host53 mha]# mysql -uroot -p123qqq...A -e 'show slave status\G' | grep -i yes
+mysql: [Warning] Using a password on the command line interface can be insecure.
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+[root@host53 mha]# 
+[root@host53 mha]# mysql -uroot -p123qqq...A -e 'show slave status\G' | grep 192
+mysql: [Warning] Using a password on the command line interface can be insecure.
+                  Master_Host: 192.168.4.52
+[root@host53 mha]# 
+[root@host53 mha]# 
+[root@host53 mha]# mysql -uroot -p123qqq...A -e 'select  * from db9.t1' 
+
+[root@localhost mha]# masterha_check_status  --conf=/etc/mha/app1.cnf 
+app1 is stopped(2:NOT_RUNNING).
+[root@localhost mha]# 
+[root@localhost mha]# vim /etc/mha/app1.cnf  # 没有[server1] 的配置
+
+[root@host57 mha]# masterha_check_repl  --conf=/etc/mha/app1.cnf #监视的主机是否是主从结构
+
+[root@host57 ~]# masterha_manager --remove_dead_master_conf --ignore_last_failover   --conf=/etc/mha/app1.cnf
+Fri Mar 27 19:45:07 2020 - [warning] Global configuration file /etc/masterha_default.cnf not found. Skipping.
+Fri Mar 27 19:45:07 2020 - [info] Reading application default configuration from /etc/mha/app1.cnf..
+Fri Mar 27 19:45:07 2020 - [info] Reading server configuration from /etc/mha/app1.cnf..
+
+
+
+[root@host57 mha]# masterha_check_status  --conf=/etc/mha/app1.cnf 
+app1 (pid:5496) is running(0:PING_OK), master:192.168.4.52
+[root@localhost mha]# 
+			7.3 恢复故障主机（把宕机的数据库服务器51再添加到集群里）
+	        		7.3.1 配置数据库服务器51
+					
+					与主服务器数据一致
+ [root@host52 mha]# mysqldump -uroot -p123qqq...A  --master-data  db9  > /root/db9.sql
+ [root@host52 mha]# scp /root/db9.sql  root@192.168.4.51:/opt/
+					启动mysql服务
+ [root@host51 mha]# systemctl  start mysqld
+ [root@host51 mha]# mysql -uroot -p123qqq...A  db9  <  /opt/db9.sql
+ [root@host51 mha]#  grep  master52  /opt/db9.sql
+
+  					指定主服务器信息
+  mysql> change master to master_host="192.168.4.52" , master_user="repluser",master_password="123qqq...A" ,master_log_file="master52.000001" , master_log_pos=2882;
+
+
+
+					启动slave进程
+mysql> start slave;
+					
+					查看状态信息
+				
+[root@host51 mysql]# mysql -uroot -p123qqq...A -e 'show slave status\G' | grep 192 
+mysql: [Warning] Using a password on the command line interface can be insecure.
+                  Master_Host: 192.168.4.52
+[root@host51 mysql]# mysql -uroot -p123qqq...A -e 'show slave status\G' | grep -i yes
+mysql: [Warning] Using a password on the command line interface can be insecure.
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+[root@host51 mysql]#
+
+				7.3.2 配置管理主机
+					修改主配置文件
+						vim /etc/mha/app1.cnf
+							[server1]
+							hostname=192.168.4.51
+							port=3306
+							candidate_master=1
+						:wq
+
+					测试集群环境
+				]# masterha_check_repl --conf=/etc/mha/app1.cnf 
+				MySQL Replication Health is OK.
+					重启管理服务
+
+				]# masterha_stop --conf=/etc/mha/app1.cnf
+
+				[root@localhost ~]# masterha_manager --remove_dead_master_conf --ignore_last_failover   --conf=/etc/mha/app1.cnf
+Fri Mar 27 22:45:21 2020 - [warning] Global configuration file /etc/masterha_default.cnf not found. Skipping.
+Fri Mar 27 22:45:21 2020 - [info] Reading application default configuration from /etc/mha/app1.cnf..
+Fri Mar 27 22:45:21 2020 - [info] Reading server configuration from /etc/mha/app1.cnf..
+				
+					查看管理服务状态
+
+				[root@localhost mha]# masterha_check_status --conf=/etc/mha/app1.cnf 
+app1 (pid:6772) is running(0:PING_OK), master:192.168.4.52
+[root@localhost mha]#
