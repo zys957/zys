@@ -1,0 +1,83 @@
+docker images ##查看本地镜像
+[root@docker1 ~]# docker images 
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+docker.io/busybox   latest              be5888e67be6        3 days ago          1.22 MB
+docker.io/redis     latest              82629e941a38        15 months ago       94.98 MB
+docker.io/nginx     latest              42b4762643dc        15 months ago       109.2 MB
+docker.io/ubuntu    latest              20bb25d32758        15 months ago       87.47 MB
+docker.io/centos    latest              76d6bc25b8a5        18 months ago       199.7 MB
+
+
+docker search 关键字       ##从官网找镜像（前提能上网）
+[root@docker1 ~]# docker search busybox
+域名           镜像                                                   描述信息                                                            下载量    镜像来源（有OK是官方镜像）
+INDEX       NAME                                             DESCRIPTION                                                      STARS     OFFICIAL     AUTOMATED
+docker.io   docker.io/busybox                          Busybox base image.                                           1862        [OK]       
+docker.io   docker.io/progrium/busybox                                                                                       71                              [OK]
+docker.io   docker.io/radial/busyboxplus         Full-chain, Internet enabled, busybox made...         28                              [OK]
+docker.io   docker.io/arm32v7/busybox           Busybox base image.                               
+docker.io   docker.io/yauritux/busybox-curl     Busybox with CURL                                                7                    
+docker.io   docker.io/armhf/busybox               Busybox base image.                                              6                    
+docker.io   docker.io/odise/busybox-curl                                                                                      4                                   [OK]
+
+
+docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+docker.io/busybox   latest              be5888e67be6        3 days ago          1.22 MB          latest是默认标签
+镜像名称                    标签                 id                             创建时间               大小
+镜像的表示方法         唯一镜像=名称+标签=唯一的镜像id
+    
+                                              
+docker pull  busybox ##########下载镜像
+
+
+docker save docker.io/busybox:latest -o busybox.tar ##镜像的导出             备份
+[root@docker1 ~]# docker save docker.io/busybox:latest -o busybox.tar
+[root@docker1 ~]# ls busybox.tar 
+busybox.tar
+
+
+docker load -i centos.tar      ############# 镜像的导入                         恢复
+[root@docker1 ~]# docker load -i busybox.tar 
+5b0d2d635df8: Loading layer [==================================================>] 1.437 MB/1.437 MB
+Loaded image: docker.io/busybox:latest                                          ] 32.77 kB/1.437 MB
+
+
+
+docker history 镜像名称：标签#############查看镜像制作历史             能看到镜像的层数
+[root@docker1 ~]# docker history docker.io/busybox:latest
+id                          创建时间              启动命令                    简要的操作
+IMAGE                 CREATED             CREATED BY                                                                        SIZE                COMMENT
+be5888e67be6    3 days ago         /bin/sh -c #(nop)        CMD ["sh"]                                        0 B                 
+<missing>           3 days ago        /bin/sh -c #(nop)        ADD file:09a89925137e1b768e       1.22 MB             
+
+
+
+docker       inspect      （容器）镜像名称：标签############查看镜像底层信息
+
+
+docker        rmi          镜像名称：标签############删除本地镜像【如果镜像启动过容器，那么该镜像不能被删除，要先把容器删了】
+docker        tag          原镜像名称：原标签   新镜像名称：新标签  
+docker        tag                   镜像ID            新镜像名称：新标签   #############类似给镜像创建软链接（不占用磁盘空间）
+镜像名称+标签组成镜像唯一表示
+https://hub.docker.com ##############Docker公共镜像下载网址
+
+
+
+
+#############################################################################################
+docker  run  参数  镜像名称：标签  启动的命令 ##########运行容器
+#####-i  交互  -t 终端   -d  在后台运行
+
+docker  ps （查看运行中容器的ID）  -------------- docker ps -a （查看所有的容器）---------------docker ps -q(只查看运行中容器的ID)
+
+docker     start          容器ID     ##########启动容器
+docker     stop         容器ID      ##########关闭容器
+docker     restart      容器ID   ##########重启容器
+docker     inspect     容器ID ##########查看容器底层信息
+docker      top          容器ID#########查看容器进程列表
+docker     rm            容器ID ###########删除容器
+docker     attach       容器ID ############进入容器（直接连接上帝进程，一般用于调试，exit后容器状态退出，ctrl+p+q退出为UP）
+docker     exec    -it   容器ID   /bin/bash ############进入容器(创建子进程连接子进程，标准进入容器，exit后容器仍UP)
+
+
