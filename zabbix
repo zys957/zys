@@ -1,0 +1,218 @@
+常用系统监控命令
+
+一般企业做监控的目的：实时报告系统状态，提前发现系统的问题。
+监控的资源可以分为：共有数据（HTTP、FTP等）和私有数据（CPU、内存、进程数等）。
+监控软件可以使用：系统自带的命令、Cacti监控系统、Nagios监控系统、Zabbix监控系统。
+Cacti擅长绘图
+Nagios擅长报警（提前设置阈值）
+Zabbix借鉴了前面两个产品的优势，做的整合，加了新的功能
+
+实验环境：
+proxy：192.168.2.5/24       [做监控的服务器] html
+web1： 192.168.2.100/24     [被监控服务器]
+web2:  192.168.2.200/24     [被监控服务器]
+
+
+zabbix需要依赖LNMP环境，因为zabbix最终部署完毕后需要使用web页面访问
+通过web页面查看监控图形和监控数据
+
+
+
+在proxy 192.168.2.5主机操作【部署lnmp环境】
+[root@proxy ~]# yum -y install gcc pcre-devel openssl-devel
+[root@proxy lnmp_soft]# tar -xf nginx-1.12.2.tar.gz
+[root@proxy lnmp_soft]# cd nginx-1.12.2/
+[root@proxy nginx-1.12.2]# ./configure --with-http_ssl_module
+[root@proxy nginx-1.12.2]# make && make install
+[root@proxy nginx-1.12.2]# yum -y install mariadb mariadb-server mariadb-devel
+[root@proxy nginx-1.12.2]# yum -y install php php-mysql php-fpm
+
+
+配置Nginx支持PHP动态网站,
+因为有大量PHP脚本需要执行,
+因此还需要开启Nginx的各种fastcgi缓存,
+加速PHP脚本的执行速度。
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+        fastcgi_buffers 8 16k;         #缓存php生成的页面内容，8个16k
+        fastcgi_buffer_size 32k;       #缓存php生产的头部信息
+        fastcgi_connect_timeout 300;   #连接PHP的超时时间
+        fastcgi_send_timeout 300;      #发送请求的超时时间
+        fastcgi_read_timeout 300;      #读取请求的超时时间
+        location ~ \.php$ {
+            root           html;
+            fastcgi_pass   127.0.0.1:9000;
+            fastcgi_index  index.php;
+            include        fastcgi.conf;
+        }
+
+启动所有服务，关闭防火墙和SELinux
+[root@proxy ~]# systemctl start mariadb
+[root@proxy ~]# systemctl start php-fpm
+[root@proxy ~]# /usr/local/nginx/sbin/nginx
+
+[root@proxy ~]# systemctl enable mariadb
+[root@proxy ~]# systemctl enable php-fpm
+[root@proxy ~]# echo /usr/local/nginx/sbin/nginx  >> /etc/rc.local
+[root@proxy ~]# chmod +x /etc/rc.local
+[root@proxy ~]# firewall-cmd --set-default-zone=trusted
+[root@proxy ~]# sed -i '/SELINUX/s/enforcing/permissive/' /etc/selinux/config
+[root@proxy ~]# setenforce 0
+
+
+在proxy监控服务器操作【源码安装zabbix】
+1.安装依赖包
+[root@proxy ~]# yum -y install  net-snmp-devel
+[root@proxy ~]# yum -y install  curl-devel autoconf
+[root@proxy ~]# yum -y install  libevent-devel
+
+zabbix源码包在lnmp_soft目录
+[root@proxy lnmp_soft]# tar -xf zabbix-3.4.4.tar.gz
+[root@proxy zabbix-3.4.4]# cd zabbix-3.4.4/
+[root@proxy zabbix-3.4.4]# ./configure  --enable-server \
+ --enable-proxy --enable-agent --with-mysql=/usr/bin/mysql_config \
+ --with-net-snmp --with-libcurl
+// --enable-server安装部署zabbix服务器端软件
+// --enable-agent安装部署zabbix被监控端软件
+// --enable-proxy安装部署zabbix代理相关软件
+// --with-mysql配置mysql_config路径
+// --with-net-snmp允许zabbix通过snmp协议监控其他设备
+// --with-libcurl安装相关curl库文件，这样zabbix就可以通过curl连接http等服务，测试被监控主机服务的状态
+[root@zabbixserver zabbix-3.4.4]# make && make install
+[root@proxy sbin]# ls /usr/local/sbin/
+
+
+2.初始化数据库
+[root@proxy zabbix-3.4.4]# mysql
+> create database zabbix character set utf8;
+#创建数据库，支持中文字符集
+> grant all on zabbix.* to zabbix@'localhost' identified by 'zabbix';
+#创建可以访问数据库的账户与密码(用户名zabbix，密码zabbix)
+> exit
+
+[root@zabbixserver ~]# cd database/mysql/
+[root@proxy mysql]# pwd
+/root/lnmp_soft/zabbix-3.4.4/database/mysql
+#备注：最终路径根据每个人存放lnmp_soft的路径不同而有所不同.
+
+[root@proxy mysql]# mysql -uzabbix -pzabbix zabbix < schema.sql
+[root@proxy mysql]# mysql -uzabbix -pzabbix zabbix < images.sql
+[root@proxy mysql]# mysql -uzabbix -pzabbix zabbix < data.sql
+#导入zabbix提前准备好的初始化数据，导入时有顺序要求
+#-u是用户名(username)，-p是密码(password)
+//刚刚创建是空数据库，zabbix源码包目录下，有提前准备好的数据
+//使用mysql导入这些数据即可（注意导入顺序）
+
+
+3.修改zabbix_server的配置文件
+[root@proxy ~]# vim /usr/local/etc/zabbix_server.conf
+LogFile=/tmp/zabbix_server.log
+#38行，日志的位置，排错使用(默认已经配置OK)
+DBHost=localhost
+#85行，定义数据库服务器在哪台电脑(localhost本机)
+DBName=zabbix
+#95行，定义数据库的名称(默认已经配置OK)
+DBUser=zabbix
+#111行，定义数据库的用户名(默认已经配置OK)
+DBPassword=zabbix
+#119行，定义数据库的密码
+
+[root@proxy ~]# useradd -s /sbin/nologin  zabbix
+[root@proxy ~]# zabbix_server
+[root@proxy ~]# echo /usr/local/sbin/zabbix_server >> /etc/rc.local
+[root@proxy ~]# chmod +x /etc/rc.local
+#启动服务，并设置开机自启
+
+
+4.修改zabbix_agent配置文件(满足自己监控自己的需求)
+[root@proxy ~]# vim /usr/local/etc/zabbix_agentd.conf
+LogFile=/tmp/zabbix_agentd.log
+#30行,定义日志文件的位置(默认已经配置OK)
+Server=127.0.0.1,192.168.2.5
+#93行,定义谁是监控服务器,谁可以监控本机
+ServerActive=127.0.0.1,192.168.2.5
+#134行,允许哪些主机通过主动模式监控本机
+Hostname=zabbixserver
+#145行,定义主机名(可以和linux主机名不一致)
+UnsafeUserParameters=1
+#280行,自定义监控可以传递参数
+
+[root@proxy ~]# zabbix_agentd
+[root@proxy ~]# echo /usr/local/sbin/zabbix_agentd >> /etc/rc.local
+#启动服务，设置开机自启
+
+
+5.部署Zabbix的web页面
+[root@proxy ~]# cd lnmp_soft/zabbix-3.4.4/frontends/php/
+[root@proxy php]# cp -r *  /usr/local/nginx/html/
+[root@proxy php]# chown -R apache.apache /usr/local/nginx/html/
+
+真机浏览器访问http://192.168.2.5/index.php
+访问网页，点击next-step，会提示错误，根据提示修改配置
+
+[root@proxy ~]# vim  /etc/php.ini
+max_execution_time = 300
+#384行，执行脚本的最大时间300秒
+max_input_time = 300
+#394行，服务器接收数据的时间限制
+post_max_size = 32M
+#672行，POST提交自己的最大容量
+date.timezone = Asia/Shanghai
+#878行,定义市区
+
+[root@proxy ~]# yum -y install  php-gd php-xml
+[root@proxy ~]# yum -y install  php-bcmath
+[root@proxy ~]# yum -y install  php-mbstring
+
+[root@proxy ~]# systemctl restart php-fpm
+
+【到这里Zabbix监控服务器部署完成】
+
+Zabbix web登陆页面，使用用户(admin)和密码(zabbix)登陆
+
+
+
+
+
+
+【部署web1和web2，被监控端主机操作】
+
+web1主机操作：
+[root@web1 ~]# useradd -s /sbin/nologin  zabbix
+[root@web1 ~]# yum -y install gcc pcre-devel autoconf
+[root@web1 ~]# tar -xf zabbix-3.4.4.tar.gz
+[root@web1 ~]# cd zabbix-3.4.4/
+[root@web1 zabbix-3.4.4]# ./configure --enable-agent
+[root@web1 zabbix-3.4.4]# make && make install
+[root@web1 zabbix-3.4.4]# ls /usr/local/sbin/
+web2主机操作：
+[root@web2 ~]# useradd -s /sbin/nologin  zabbix
+[root@web2 ~]# yum -y install gcc pcre-devel autoconf
+[root@web2 ~]# tar -xf zabbix-3.4.4.tar.gz
+[root@web2 ~]# cd zabbix-3.4.4/
+[root@web2 zabbix-3.4.4]# ./configure --enable-agent
+[root@web2 zabbix-3.4.4]# make && make install
+
+
+给web1修改zabbix_agent配置文件【被监控端】
+[root@web1 zabbix-3.4.4]# vim /usr/local/etc/zabbix_agentd.conf
+EnableRemoteCommands=1
+#69行，监控异常后，是否允许服务器远程过来执行命令，如重启某个服务
+Server=127.0.0.1,192.168.2.5
+#93行，定义谁是监控服务器
+ServerActive=127.0.0.1,192.168.2.5
+#134行，谁可以监控本机（主动监控模式）
+Hostname=web1
+#145行，被监控端自己的主机名
+UnsafeUserParameters=1
+#280行，允许自定义监控传参
+
+[root@web1 zabbix-3.4.4]# zabbix_agentd
+[root@web1 zabbix-3.4.4]# echo "/usr/local/sbin/zabbix_agentd" >> /etc/rc.local
+[root@web1 zabbix-3.4.4]# chmod +x /etc/rc.local
+#启动服务，设置开机自启
+
+[root@web1 ~]# firewall-cmd --set-default-zone=trusted
+[root@web1 ~]# sed -i  '/SELINUX/s/enforcing/permissive/' /etc/selinux/config
+[root@web1 ~]# setenforce 0
+
+      
