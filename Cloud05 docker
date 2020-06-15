@@ -1,0 +1,99 @@
+docker 安装
+1 在跳板机上配置 yum 仓库
+  拷贝 kubernetes/docker 目录到  /var/ftp/localrepo
+  更新索引 createrepo --update .
+
+2 购买 2 台云主机，最低配置  2cpu，2G内存
+  192.168.1.31  node-0001
+  192.168.1.32  node-0002
+ 
+3 在所有 node 节点配置路由转发
+  /etc/sysctl.conf 添加 net.ipv4.ip_forward = 1
+  sysctl -p
+
+4 按装 docker
+  yum remove firewalld-*
+  yum makecache
+  yum install docker-ce
+
+5 修改默认规则
+  编辑 /usr/lib/systemd/system/docker.service
+  添加 ExecStartPost=/sbin/iptables -P FORWARD ACCEPT
+  重新加载启动文件 systemctl daemon-reload
+  设置开机自启动 systemctl enable docker
+  重启服务 systemctl restart docker
+
+6 验证 docker version
+
+docker 管理命令
+docker  images  查看本机镜像
+docker  search  查找镜像（官方仓库）
+docker  pull    下载镜像
+docker  push    上传镜像
+docker  rmi     删除镜像（需要先删除容器）
+docker  save    备份
+docker  load    恢复
+docker  history 镜像制作历史
+docker  inspect 镜像详细信息
+docker  tag     镜像标签
+
+容器管理使用（容器id），镜像管理使用（名称:标签）
+docker  run  参数  镜像名称:标签  启动命令
+        run == 创建  +  启动运行  +  连接进入
+              create +  start     +  attach
+镜像类型
+     可交互：centos, busybox, ubuntu（-it 交互式终端）
+   不可交互：nginx, redis （服务：-itd 在后台启动）
+
+docker  ps	查看容器信息（-a 所有容器，-q只显示id）
+docker  rm	删除容器（-f 强制删除）
+docker  inspect	查看详细信息
+docker  top	查看容器内运行的进程
+docker  start|stop|restart  启动、停止、重启一个已经存在的容器
+docker  attach  进入容器（退出后容器会关闭，只能进交互式的容器）
+docker  exec -it 容器id  /bin/bash  进入容器的主要维护命令
+docker  cp 本机文件路径  容器id:容器内路径（上传）
+docker  cp 容器id:容器内路径  本机文件路径（下载）
+
+历史命令
+docker rmi busybox:latest 
+docker images
+docker history centos:latest 
+docker history nginx:latest 
+docker images
+docker inspect centos:latest 
+docker inspect busybox:latest 
+docker images
+docker tag 1c35c4412082  abc:latest
+docker images
+docker rmi abc:latest
+docker images
+docker tag busybox:latest abc:latest
+docker images
+docker tag busybox:latest abc:v1
+docker images
+docker abc:v1
+docker rmi abc:v1
+docker rmi abc:latest
+
+docker run -itd --name myos centos:latest  
+docker ps 
+docker ps -a
+docker ps -q
+docker ps -aq
+docker rm 54ff6f4c397b
+docker ps -aq
+docker rm myos
+docker rm -f myos
+docker rm myos
+docker ps 
+docker inspect dc8ebbe23f0c
+docker ps
+docker inspect 35343aa2db31
+docker ps
+docker stop 35343aa2db31
+docker ps
+docker start 35343aa2db31
+docker ps 
+docker run -it centos:latest 
+
