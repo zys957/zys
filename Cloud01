@@ -1,0 +1,83 @@
+云计算
+  |- 虚拟化 +- windows (vmware)
+            |- Linux (KVM)
+                 |- 虚拟化平台  qemu-kvm,
+                 |              libvirt-daemon,
+                 |              libvirt-daemon-driver-qemu,
+                 |              libvirt-client
+                 |- 虚拟交换机 /etc/libvirt/qemu/networks/vbr.xml
+                 |- 虚拟机
+                     |- 硬盘文件 /var/lib/libvirt/images/vmhost.img
+		     |           qemu-img create -b 后端盘 -f qcow2 vmhost.img
+                     |- 配置文件 /etc/libvirt/qemu/vmhost.xml
+                                 根据模板修改
+
+配置文件路径
+/etc/libvirt/qemu
+磁盘文件路径
+/var/lib/libvirt/images
+
+qemu-img  虚拟机磁盘管理命令
+  create  创建虚拟机磁盘
+  info    查询虚拟机磁盘信息
+  convert 转换虚拟机磁盘信息
+
+1 创建虚拟机磁盘
+qcow2 格式，占用空间小
+qemu-img  create  -f  qcow2  disk1.img 10G   
+
+raw  格式，占用空间大
+qemu-img  create  -f  raw  disk1.img 10G   
+
+2 使用后端盘，创建磁盘文件
+   cirros.img 为后端盘，里面有一个已经安装好的操作系统
+cd /var/lib/libvirt/images/
+qemu-img  create  -b cirros.img  -f qcow2  vmhost.img 10G
+
+3 虚拟交换机创建
+创建配置文件 /etc/libvirt/qemu/networks/vbr.xml
+<network>
+  <name>vbr</name>
+  <forward mode='nat'/>
+  <bridge name='vbr' stp='on' delay='0'/>
+  <ip address='192.168.100.254' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.100.100' end='192.168.100.200'/>
+    </dhcp>
+  </ip>
+</network>
+
+创建设备 virsh net-define /etc/libvirt/qemu/networks/vbr.xml
+启动设备 virsh net-start vbr
+查看设备 virsh net-list --all
+停止设备 virsh net-destroy vbr
+开机启动 virsh net-autostart vbr
+
+使用模板创建虚拟机
+1 虚拟机的名字 vmhost
+  2   <name>vmhost</name>
+2 准备虚拟机的硬盘文件 qemu-img 创建的 vmhost.img
+ 26       <source file='/var/lib/libvirt/images/vmhost.img'/>
+3 虚拟机的 cpu 个数 (2)
+  5   <vcpu placement='static'>2</vcpu>
+4 虚拟机的内存 2G
+  3   <memory unit='KB'>2200000</memory>
+  4   <currentMemory unit='KB'>2200000</currentMemory>
+5 虚拟交换机是哪个 vbr
+ 30       <source bridge='vbr'/>
+
+virsh list --all 显示虚拟机
+virsh start	启动虚拟机
+virsh stop	停止虚拟机
+virsh destroy	强制关闭虚拟机
+virsh define 	定义虚拟机
+virsh undefine	删除虚拟机定义
+virsh console	连接一个已经运行的虚拟机console
+
+
+
+
+
+
+
+
